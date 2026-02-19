@@ -42,5 +42,8 @@ Thumbs.db
 uploads/*
 !uploads/.gitkeep
 
+# Test images
+test_images/
+
 # Environment
 .env
