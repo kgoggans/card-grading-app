@@ -447,7 +447,7 @@
             // Display category scores
             categoryScores.innerHTML = '';
             for (const [category, score] of Object.entries(data.category_scores)) {
-                const categoryName = category.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
+                const categoryName = category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
                 const scoreItem = document.createElement('div');
                 scoreItem.className = 'score-item';
                 scoreItem.innerHTML = `
