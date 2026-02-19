@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About PSA Grading - Card Grading App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .content {
+            padding: 40px;
+            line-height: 1.8;
+        }
+        
+        h2 {
+            color: #667eea;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+        
+        h3 {
+            color: #764ba2;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .grade-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        .grade-table th,
+        .grade-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .grade-table th {
+            background: #667eea;
+            color: white;
+        }
+        
+        .grade-table tr:hover {
+            background: #f5f5f5;
+        }
+        
+        .back-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 1em;
+            border-radius: 50px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 30px;
+        }
+        
+        .back-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        
+        ul {
+            margin-left: 30px;
+            margin-top: 10px;
+        }
+        
+        li {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>About PSA Grading</h1>
+        </header>
+        
+        <div class="content">
+            <h2>What is PSA Grading?</h2>
+            <p>
+                PSA (Professional Sports Authenticator) is the world's largest third-party authentication and grading company
+                for trading cards and collectibles. PSA uses a 1-10 grading scale to assess the condition of sports cards.
+            </p>
+            
+            <h2>The PSA Grading Scale</h2>
+            <table class="grade-table">
+                <thead>
+                    <tr>
+                        <th>Grade</th>
+                        <th>Designation</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>10</strong></td>
+                        <td>Gem Mint</td>
+                        <td>A PSA Gem Mint 10 card is a virtually perfect card with sharp corners, good centering, and no staining.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>9</strong></td>
+                        <td>Mint</td>
+                        <td>A PSA Mint 9 is a superb condition card with only one minor flaw upon close inspection.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>8</strong></td>
+                        <td>Near Mint-Mint</td>
+                        <td>A PSA NM-MT 8 shows very slight wear on corners, edges, or surface but still has a pristine appearance.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>7</strong></td>
+                        <td>Near Mint</td>
+                        <td>A PSA NM 7 has minor imperfections but is still quite attractive.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>6</strong></td>
+                        <td>Excellent-Mint</td>
+                        <td>A PSA EX-MT 6 shows minor wear on corners and edges but is still very collectible.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>5</strong></td>
+                        <td>Excellent</td>
+                        <td>A PSA EX 5 has moderate wear but is still relatively attractive.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>4</strong></td>
+                        <td>Very Good-Excellent</td>
+                        <td>A PSA VG-EX 4 shows obvious wear but no major creases.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>3</strong></td>
+                        <td>Very Good</td>
+                        <td>A PSA VG 3 has noticeable wear with possible light creases.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>2</strong></td>
+                        <td>Good</td>
+                        <td>A PSA Good 2 shows substantial wear with creases and other damage.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>1</strong></td>
+                        <td>Poor</td>
+                        <td>A PSA Poor 1 has heavy wear and damage.</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <h2>How Our AI Grading Works</h2>
+            <p>
+                Our AI-powered grading system analyzes uploaded images of sports cards and estimates the PSA grade based on
+                multiple factors:
+            </p>
+            
+            <h3>Key Grading Criteria</h3>
+            <ul>
+                <li><strong>Corners (25%):</strong> Examines corner sharpness, wear, and rounding</li>
+                <li><strong>Edges (20%):</strong> Checks for chipping, whitening, and roughness</li>
+                <li><strong>Surface (25%):</strong> Looks for scratches, creases, stains, and print defects</li>
+                <li><strong>Centering (15%):</strong> Analyzes image placement and border balance</li>
+                <li><strong>Print Quality (15%):</strong> Evaluates focus, color accuracy, and registration</li>
+            </ul>
+            
+            <h3>Analysis Process</h3>
+            <ol>
+                <li>Images are uploaded (front and back of the card)</li>
+                <li>Computer vision algorithms analyze each grading criterion</li>
+                <li>Both sides are evaluated (card receives the lower score if sides differ)</li>
+                <li>Category scores are weighted and combined for an overall grade</li>
+                <li>Results include detailed breakdown and explanations</li>
+            </ol>
+            
+            <div class="info-box">
+                <h3>Important Notes on Accuracy</h3>
+                <p><strong>For best results:</strong></p>
+                <ul>
+                    <li>Use high-resolution images (at least 800px on the smallest side)</li>
+                    <li>Ensure good, even lighting without glare or shadows</li>
+                    <li>Capture the entire card with clear borders visible</li>
+                    <li>Take photos on a contrasting background</li>
+                    <li>Avoid using flash which can create glare</li>
+                </ul>
+                
+                <p style="margin-top: 15px;"><strong>Limitations:</strong></p>
+                <ul>
+                    <li>This is an AI estimate and NOT an official PSA grade</li>
+                    <li>Actual PSA grading considers factors not visible in photos</li>
+                    <li>Image quality directly impacts accuracy</li>
+                    <li>Some card-specific issues may not be detectable</li>
+                    <li>For official grading and authentication, submit to PSA directly</li>
+                </ul>
+            </div>
+            
+            <h2>Achieving Consistent Results</h2>
+            <p>
+                To get the most accurate and consistent grading estimates:
+            </p>
+            <ul>
+                <li><strong>Consistent Photography:</strong> Use the same lighting setup and camera angle for all cards</li>
+                <li><strong>High Quality Images:</strong> Higher resolution images provide more detail for analysis</li>
+                <li><strong>Clean Cards:</strong> Remove any dust or fingerprints before photographing</li>
+                <li><strong>Multiple Angles:</strong> While the app requires front/back, ensuring both images are clear helps</li>
+                <li><strong>Flat Surface:</strong> Photograph cards on a flat surface to avoid distortion</li>
+            </ul>
+            
+            <a href="/" class="back-button">← Back to Grading</a>
+        </div>
+    </div>
+</body>
+</html>
