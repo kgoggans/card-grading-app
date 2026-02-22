@@ -78,18 +78,28 @@ def grade_card():
         grader = CardGrader()
         grading_result = grader.grade_card(front_analysis, back_analysis)
         
+        # Format description for JSON response
+        from grading_system import PSAGradingCriteria
+        description = grading_result['description']
+        formatted_description = PSAGradingCriteria.format_description(description)
+        detailed_criteria = PSAGradingCriteria.get_detailed_criteria(description)
+        
         # Prepare response
         response = {
             'success': True,
             'score': grading_result['score'],
             'grade': grading_result['grade'],
             'grade_name': grading_result['grade_name'],
-            'description': grading_result['description'],
+            'description': formatted_description,
             'details': grading_result['details'],
             'category_scores': grading_result['category_scores'],
             'front_image': url_for('static', filename=f'../uploads/{front_filename}'),
             'back_image': url_for('static', filename=f'../uploads/{back_filename}')
         }
+        
+        # Add detailed criteria if available
+        if detailed_criteria:
+            response['detailed_criteria'] = detailed_criteria
         
         return jsonify(response)
     
