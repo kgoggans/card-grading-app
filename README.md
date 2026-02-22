@@ -1,12 +1,13 @@
 # Sports Card Grading App 🏆
 
-An AI-powered web application that analyzes sports card images and provides PSA (Professional Sports Authenticator) grade estimates. Upload front and back photos of your cards to receive detailed condition assessments and grade predictions.
+An AI-powered web application that analyzes sports card images and provides comprehensive grade estimates using a custom 100-1000 point scale. Upload front and back photos of your cards to receive detailed condition assessments with 19 distinct grade levels.
 
 ## Features
 
 - **AI-Powered Analysis**: Advanced computer vision algorithms analyze card condition
-- **PSA Grading Scale**: Estimates grades on the official 1-10 PSA scale
-- **Comprehensive Evaluation**: Analyzes corners, edges, surface, centering, and print quality
+- **Custom 100-1000 Point Scale**: Much more granular than traditional 1-10 scales
+- **19 Grade Levels**: From POOR (100-149) to PRISTINE (990-1000)
+- **Comprehensive Evaluation**: Analyzes corners, edges, surface, and centering
 - **Detailed Breakdowns**: Provides category-by-category scores and explanations
 - **Web Interface**: Easy-to-use interface for uploading and viewing results
 - **Consistent Grading**: Uses standardized criteria for reproducible results
@@ -15,15 +16,40 @@ An AI-powered web application that analyzes sports card images and provides PSA 
 
 ### Grading Criteria
 
-The app evaluates five key categories based on PSA standards:
+The app evaluates four key categories, each weighted equally at 25%:
 
-1. **Corners (25% weight)**: Sharpness, wear, and rounding
-2. **Edges (20% weight)**: Chipping, whitening, and roughness
-3. **Surface (25% weight)**: Scratches, creases, stains, and print defects
-4. **Centering (15% weight)**: Image placement and border balance
-5. **Print Quality (15% weight)**: Focus, color accuracy, and registration
+1. **Corners (25% weight)**: Sharpness, wear, rounding, and surface compromise
+2. **Edges (25% weight)**: Chipping, whitening, roughness, notches, and tears
+3. **Surface (25% weight)**: Scratches, creases, wrinkles, stains, and print defects
+4. **Centering (25% weight)**: Image placement within borders (51/49 to 95/5 tolerance)
 
 Each side of the card is analyzed separately, and the final grade uses the worse score for each category (a card is only as good as its worst side).
+
+### Grading Scale
+
+The system uses a 100-1000 point scale with 19 distinct grade levels:
+
+| Grade | Name | Score Range | Description |
+|-------|------|-------------|-------------|
+| 10 | PRISTINE | 990-1000 | Virtually flawless |
+| 10 | GEM MINT | 950-989 | Extremely high-grade |
+| 9 | MINT | 900-949 | High-grade with minimal wear |
+| 8.5 | NEAR MINT-MINT+ | 850-899 | Very nice with light wear |
+| 8 | NEAR MINT-MINT | 800-849 | Nice with visible wear |
+| 7.5 | NEAR MINT+ | 750-799 | Above average |
+| 7 | NEAR MINT | 700-749 | Average collectible |
+| 6.5 | EXCELLENT-MINT+ | 650-699 | Below average |
+| 6 | EXCELLENT-MINT | 600-649 | Noticeable wear |
+| 5.5 | EXCELLENT+ | 550-599 | Heavy wear beginning |
+| 5 | EXCELLENT | 500-549 | Substantial wear |
+| 4.5 | VERY GOOD-EXCELLENT+ | 450-499 | Significant damage |
+| 4 | VERY GOOD-EXCELLENT | 400-449 | Heavy damage |
+| 3.5 | VERY GOOD+ | 350-399 | Very heavy damage |
+| 3 | VERY GOOD | 300-349 | Extreme wear |
+| 2.5 | GOOD+ | 250-299 | Severe damage |
+| 2 | GOOD | 200-249 | Major structural issues |
+| 1.5 | FAIR | 150-199 | Card integrity compromised |
+| 1 | POOR | 100-149 | Barely recognizable |
 
 ## Installation
 
@@ -59,7 +85,7 @@ http://localhost:5000
 
 1. **Upload Images**: Click on the upload boxes to select front and back images of your card
 2. **Grade Card**: Click the "Grade My Card" button to start the analysis
-3. **View Results**: See your estimated PSA grade with detailed category scores and explanations
+3. **View Results**: See your estimated grade (1-10 with name) and numerical score (100-1000) with detailed category scores
 
 ### Tips for Best Results
 
@@ -69,21 +95,6 @@ http://localhost:5000
 - Use a contrasting background
 - Avoid flash photography that creates glare
 - Keep cards clean and free of dust/fingerprints
-
-## PSA Grading Scale
-
-| Grade | Designation | Description |
-|-------|-------------|-------------|
-| 10 | Gem Mint | Perfect card with no visible flaws |
-| 9 | Mint | Near-perfect with minimal wear |
-| 8 | Near Mint-Mint | Very slight wear on corners/edges |
-| 7 | Near Mint | Minor defects visible |
-| 6 | Excellent-Mint | Noticeable wear but attractive |
-| 5 | Excellent | Moderate wear on corners/edges |
-| 4 | Very Good-Excellent | Significant wear, no major creases |
-| 3 | Very Good | Heavy wear with possible light creases |
-| 2 | Good | Very heavy wear with creases |
-| 1 | Poor | Extremely poor condition |
 
 ## Accuracy and Consistency
 
@@ -120,12 +131,12 @@ For consistent results across multiple cards:
 ```
 card-grading-app/
 ├── app.py                  # Flask web application
-├── grading_system.py       # PSA grading logic and criteria
+├── grading_system.py       # Custom grading logic and criteria (100-1000 scale)
 ├── image_analysis.py       # Computer vision analysis
 ├── requirements.txt        # Python dependencies
 ├── templates/
 │   ├── index.html         # Main upload interface
-│   └── about.html         # Information about grading
+│   └── about.html         # Information about grading system
 ├── uploads/               # Uploaded card images (gitignored)
 └── README.md              # This file
 ```
@@ -151,7 +162,7 @@ This runs the example grading scenario included in the grading system module.
 
 Edit `grading_system.py` to adjust:
 - Category weights (in `PSAGradingCriteria.CATEGORY_WEIGHTS`)
-- Grade descriptions (in `PSAGradingCriteria.GRADE_DESCRIPTIONS`)
+- Grade ranges and descriptions (in `PSAGradingCriteria.GRADE_RANGES`)
 - Analysis thresholds (in `CardGrader` methods)
 
 ### Improving Image Analysis
@@ -161,7 +172,6 @@ Edit `image_analysis.py` to enhance:
 - Edge analysis techniques
 - Surface defect identification
 - Centering calculations
-- Print quality assessment
 
 ## Contributing
 
@@ -180,7 +190,7 @@ This project is available for educational and personal use.
 
 ## Disclaimer
 
-This application provides AI-generated grade estimates for informational purposes only. These estimates are not official PSA grades and should not be used for buying, selling, or authenticating cards. For official grading, submit your cards to PSA (www.psacard.com).
+This application provides AI-generated grade estimates for informational purposes only using a custom 100-1000 point grading scale. These estimates are not official professional grades and should not be used for buying, selling, or authenticating cards. Results are for comparative and educational purposes.
 
 ## Support
 
