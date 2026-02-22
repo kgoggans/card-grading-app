@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sports Card Grading App - PSA Grade Estimator</title>
+    <title>Sports Card Grading App - Custom Grade Estimator</title>
     <style>
         * {
             margin: 0;
@@ -142,12 +142,13 @@
         }
         
         .grade-number {
-            font-size: 5em;
+            font-size: 3em;
             font-weight: bold;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+            line-height: 1.2;
         }
         
         .grade-label {
@@ -157,9 +158,10 @@
         }
         
         .grade-description {
-            font-size: 1.1em;
+            font-size: 1em;
             color: #555;
             margin-top: 10px;
+            line-height: 1.6;
         }
         
         .details {
@@ -291,7 +293,7 @@
     <div class="container">
         <header>
             <h1>🏆 Sports Card Grading App</h1>
-            <p>AI-Powered PSA Grade Estimator</p>
+            <p>AI-Powered Custom Grade Estimator (100-1000 Point Scale)</p>
         </header>
         
         <div class="content">
@@ -300,8 +302,8 @@
                 <ul>
                     <li>Upload clear, well-lit photos of both the front and back of your sports card</li>
                     <li>Ensure the entire card is visible with minimal glare or shadows</li>
-                    <li>The AI will analyze the card condition and provide a PSA grade estimate (1-10)</li>
-                    <li>Review the detailed breakdown of corner, edge, surface, centering, and print quality scores</li>
+                    <li>The AI will analyze the card condition and provide a grade estimate on a 100-1000 point scale</li>
+                    <li>Review the detailed breakdown of corner, edge, surface, and centering scores</li>
                 </ul>
             </div>
             
@@ -351,9 +353,9 @@
         </div>
         
         <footer>
-            <p>© 2024 Card Grading App | <a href="/about" style="color: #667eea;">About PSA Grading</a></p>
+            <p>© 2024 Card Grading App | <a href="/about" style="color: #667eea;">About Grading System</a></p>
             <p style="margin-top: 10px; font-size: 0.9em;">
-                Note: This is an AI estimate and not an official PSA grade. For official grading, submit to PSA.
+                Note: This is an AI estimate using a custom 100-1000 point grading scale. Results are for informational purposes only.
             </p>
         </footer>
     </div>
@@ -440,9 +442,9 @@
             const categoryScores = document.getElementById('categoryScores');
             const detailsText = document.getElementById('detailsText');
             
-            // Display grade
-            gradeNumber.textContent = data.grade;
-            gradeDescription.textContent = data.description;
+            // Display grade - show both numeric grade and name
+            gradeNumber.textContent = `${data.grade} - ${data.grade_name}`;
+            gradeDescription.textContent = `Score: ${data.score}/1000 | ${data.description}`;
             
             // Display category scores
             categoryScores.innerHTML = '';
@@ -452,7 +454,7 @@
                 scoreItem.className = 'score-item';
                 scoreItem.innerHTML = `
                     <h4>${categoryName}</h4>
-                    <div class="score-value">${score.toFixed(1)}</div>
+                    <div class="score-value">${score}/1000</div>
                 `;
                 categoryScores.appendChild(scoreItem);
             }

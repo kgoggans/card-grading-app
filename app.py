@@ -81,8 +81,9 @@ def grade_card():
         # Prepare response
         response = {
             'success': True,
+            'score': grading_result['score'],
             'grade': grading_result['grade'],
-            'grade_decimal': grading_result['grade_decimal'],
+            'grade_name': grading_result['grade_name'],
             'description': grading_result['description'],
             'details': grading_result['details'],
             'category_scores': grading_result['category_scores'],
