@@ -2,6 +2,16 @@
 
 An AI-powered web application that analyzes sports card images and provides comprehensive grade estimates using a custom 100-1000 point scale. Upload front and back photos of your cards to receive detailed condition assessments with 19 distinct grade levels.
 
+## 📍 Where to Run This?
+
+**Can I run this in VS Code?** → **YES!** See [HOW_TO_RUN.md](HOW_TO_RUN.md) for detailed instructions.
+
+You can run this app in:
+- ✅ **VS Code** (recommended for beginners) - [See guide](HOW_TO_RUN.md#method-1-running-in-vs-code-recommended-for-beginners)
+- ✅ **Command Line / Terminal** - [See guide](HOW_TO_RUN.md#method-2-running-from-command-line--terminal)
+- ✅ **PyCharm or other IDEs** - [See guide](HOW_TO_RUN.md#method-3-running-in-pycharm)
+- ✅ **Any Python environment** - [See guide](HOW_TO_RUN.md)
+
 ## 🚀 Quick Start - Test Your Cards Now!
 
 **Want to start grading cards immediately?** See the [QUICKSTART.md](QUICKSTART.md) guide!

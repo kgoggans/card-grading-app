@@ -1,5 +1,13 @@
 # Quick Start Guide - Test Your Cards Now! 🏆
 
+## 🤔 Where Do I Run This?
+
+**New to this?** Check out [HOW_TO_RUN.md](HOW_TO_RUN.md) for detailed setup instructions including:
+- ✅ Running in VS Code (step-by-step with screenshots)
+- ✅ Running from Command Line/Terminal
+- ✅ Running in PyCharm or other IDEs
+- ✅ Troubleshooting common issues
+
 ## Where to Upload Cards
 
 ![Card Upload Interface](https://github.com/user-attachments/assets/29a09b70-7ce5-4273-a2a9-59a306df2ea2)
@@ -13,6 +21,8 @@ pip install flask pillow numpy opencv-python werkzeug
 # Run the app
 python app.py
 ```
+
+**Need help?** See [HOW_TO_RUN.md](HOW_TO_RUN.md) for detailed instructions on running in VS Code or other environments.
 
 ## Step 2: Open the Web Interface
 
