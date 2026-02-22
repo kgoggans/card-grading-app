@@ -2,6 +2,22 @@
 
 An AI-powered web application that analyzes sports card images and provides comprehensive grade estimates using a custom 100-1000 point scale. Upload front and back photos of your cards to receive detailed condition assessments with 19 distinct grade levels.
 
+## 🚀 Quick Start - Test Your Cards Now!
+
+**Want to start grading cards immediately?** See the [QUICKSTART.md](QUICKSTART.md) guide!
+
+![Card Upload Interface](https://github.com/user-attachments/assets/29a09b70-7ce5-4273-a2a9-59a306df2ea2)
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the app
+python app.py
+
+# Open in browser: http://localhost:5000
+```
+
 ## Features
 
 - **AI-Powered Analysis**: Advanced computer vision algorithms analyze card condition
