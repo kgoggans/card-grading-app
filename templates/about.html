@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>About PSA Grading - Card Grading App</title>
+    <title>About Custom Grading System - Card Grading App</title>
     <style>
         * {
             margin: 0;
@@ -19,7 +19,7 @@
         }
         
         .container {
-            max-width: 900px;
+            max-width: 1000px;
             margin: 0 auto;
             background: white;
             border-radius: 20px;
@@ -60,11 +60,12 @@
             width: 100%;
             border-collapse: collapse;
             margin: 20px 0;
+            font-size: 0.9em;
         }
         
         .grade-table th,
         .grade-table td {
-            padding: 12px;
+            padding: 10px;
             text-align: left;
             border-bottom: 1px solid #ddd;
         }
@@ -72,10 +73,21 @@
         .grade-table th {
             background: #667eea;
             color: white;
+            font-weight: bold;
         }
         
         .grade-table tr:hover {
             background: #f5f5f5;
+        }
+        
+        .grade-number {
+            font-weight: bold;
+            color: #764ba2;
+        }
+        
+        .score-range {
+            color: #666;
+            font-size: 0.9em;
         }
         
         .back-button {
@@ -117,134 +129,205 @@
 <body>
     <div class="container">
         <header>
-            <h1>About PSA Grading</h1>
+            <h1>About Custom Grading System</h1>
         </header>
         
         <div class="content">
-            <h2>What is PSA Grading?</h2>
+            <h2>Custom 100-1000 Point Grading Scale</h2>
             <p>
-                PSA (Professional Sports Authenticator) is the world's largest third-party authentication and grading company
-                for trading cards and collectibles. PSA uses a 1-10 grading scale to assess the condition of sports cards.
+                This application uses a comprehensive custom grading system with a 100-1000 point scale, providing 
+                much more granular assessment than traditional 1-10 scales. The system evaluates 19 distinct grade 
+                levels from POOR to PRISTINE condition.
             </p>
             
-            <h2>The PSA Grading Scale</h2>
+            <h2>The Grading Scale</h2>
             <table class="grade-table">
                 <thead>
                     <tr>
                         <th>Grade</th>
-                        <th>Designation</th>
+                        <th>Name</th>
+                        <th>Score Range</th>
                         <th>Description</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td><strong>10</strong></td>
-                        <td>Gem Mint</td>
-                        <td>A PSA Gem Mint 10 card is a virtually perfect card with sharp corners, good centering, and no staining.</td>
+                        <td class="grade-number">10</td>
+                        <td>PRISTINE</td>
+                        <td class="score-range">990-1000</td>
+                        <td>Virtually flawless - perfect corners, centering, surface, and edges</td>
                     </tr>
                     <tr>
-                        <td><strong>9</strong></td>
-                        <td>Mint</td>
-                        <td>A PSA Mint 9 is a superb condition card with only one minor flaw upon close inspection.</td>
+                        <td class="grade-number">10</td>
+                        <td>GEM MINT</td>
+                        <td class="score-range">950-989</td>
+                        <td>4 sharp corners with minor artifacts, extremely attractive surface</td>
                     </tr>
                     <tr>
-                        <td><strong>8</strong></td>
-                        <td>Near Mint-Mint</td>
-                        <td>A PSA NM-MT 8 shows very slight wear on corners, edges, or surface but still has a pristine appearance.</td>
+                        <td class="grade-number">9</td>
+                        <td>MINT</td>
+                        <td class="score-range">900-949</td>
+                        <td>Sharp square corners with light touches, minimal surface issues</td>
                     </tr>
                     <tr>
-                        <td><strong>7</strong></td>
-                        <td>Near Mint</td>
-                        <td>A PSA NM 7 has minor imperfections but is still quite attractive.</td>
+                        <td class="grade-number">8.5</td>
+                        <td>NEAR MINT - MINT+</td>
+                        <td class="score-range">850-899</td>
+                        <td>Multiple light corner touches, multiple surface defects presenting</td>
                     </tr>
                     <tr>
-                        <td><strong>6</strong></td>
-                        <td>Excellent-Mint</td>
-                        <td>A PSA EX-MT 6 shows minor wear on corners and edges but is still very collectible.</td>
+                        <td class="grade-number">8</td>
+                        <td>NEAR MINT - MINT</td>
+                        <td class="score-range">800-849</td>
+                        <td>Minor corner wear starting, several surface defects present</td>
                     </tr>
                     <tr>
-                        <td><strong>5</strong></td>
-                        <td>Excellent</td>
-                        <td>A PSA EX 5 has moderate wear but is still relatively attractive.</td>
+                        <td class="grade-number">7.5</td>
+                        <td>NEAR MINT+</td>
+                        <td class="score-range">750-799</td>
+                        <td>Corners showing more wear, very minor dent possible</td>
                     </tr>
                     <tr>
-                        <td><strong>4</strong></td>
-                        <td>Very Good-Excellent</td>
-                        <td>A PSA VG-EX 4 shows obvious wear but no major creases.</td>
+                        <td class="grade-number">7</td>
+                        <td>NEAR MINT</td>
+                        <td class="score-range">700-749</td>
+                        <td>Corners square but showing fraying, minor dent may impact both sides</td>
                     </tr>
                     <tr>
-                        <td><strong>3</strong></td>
-                        <td>Very Good</td>
-                        <td>A PSA VG 3 has noticeable wear with possible light creases.</td>
+                        <td class="grade-number">6.5</td>
+                        <td>EXCELLENT - MINT+</td>
+                        <td class="score-range">650-699</td>
+                        <td>Corner may lose shape, short wrinkle possible on back</td>
                     </tr>
                     <tr>
-                        <td><strong>2</strong></td>
-                        <td>Good</td>
-                        <td>A PSA Good 2 shows substantial wear with creases and other damage.</td>
+                        <td class="grade-number">6</td>
+                        <td>EXCELLENT - MINT</td>
+                        <td class="score-range">600-649</td>
+                        <td>One corner may show slight rounding, longer wrinkle on back</td>
                     </tr>
                     <tr>
-                        <td><strong>1</strong></td>
-                        <td>Poor</td>
-                        <td>A PSA Poor 1 has heavy wear and damage.</td>
+                        <td class="grade-number">5.5</td>
+                        <td>EXCELLENT+</td>
+                        <td class="score-range">550-599</td>
+                        <td>Minor corner rounding, small wrinkle on front possible</td>
+                    </tr>
+                    <tr>
+                        <td class="grade-number">5</td>
+                        <td>EXCELLENT</td>
+                        <td class="score-range">500-549</td>
+                        <td>Rounding of 1-2 corners more significant, multiple small wrinkles</td>
+                    </tr>
+                    <tr>
+                        <td class="grade-number">4.5</td>
+                        <td>VERY GOOD - EXCELLENT+</td>
+                        <td class="score-range">450-499</td>
+                        <td>Corner clearly rounded, minor crease visible breaking stock</td>
+                    </tr>
+                    <tr>
+                        <td class="grade-number">4</td>
+                        <td>VERY GOOD - EXCELLENT</td>
+                        <td class="score-range">400-449</td>
+                        <td>2-3 corners clearly rounded, minor crease on both sides</td>
+                    </tr>
+                    <tr>
+                        <td class="grade-number">3.5</td>
+                        <td>VERY GOOD+</td>
+                        <td class="score-range">350-399</td>
+                        <td>All four corners rounded, light wrinkle spanning 3/4 of back</td>
+                    </tr>
+                    <tr>
+                        <td class="grade-number">3</td>
+                        <td>VERY GOOD</td>
+                        <td class="score-range">300-349</td>
+                        <td>Four rounded corners bordering extreme, heavier wrinkles present</td>
+                    </tr>
+                    <tr>
+                        <td class="grade-number">2.5</td>
+                        <td>GOOD+</td>
+                        <td class="score-range">250-299</td>
+                        <td>Extreme corner rounding, wrinkle spanning length of card</td>
+                    </tr>
+                    <tr>
+                        <td class="grade-number">2</td>
+                        <td>GOOD</td>
+                        <td class="score-range">200-249</td>
+                        <td>All corners extremely rounded, multiple full-length wrinkles</td>
+                    </tr>
+                    <tr>
+                        <td class="grade-number">1.5</td>
+                        <td>FAIR</td>
+                        <td class="score-range">150-199</td>
+                        <td>Corners appearing to fall apart, staple holes present</td>
+                    </tr>
+                    <tr>
+                        <td class="grade-number">1</td>
+                        <td>POOR</td>
+                        <td class="score-range">100-149</td>
+                        <td>Corners misshaped/fallen off, tape or glue on front</td>
                     </tr>
                 </tbody>
             </table>
             
-            <h2>How Our AI Grading Works</h2>
-            <p>
-                Our AI-powered grading system analyzes uploaded images of sports cards and estimates the PSA grade based on
-                multiple factors:
-            </p>
+            <h2>Grading Categories</h2>
+            <p>Each card is evaluated across four key categories, each weighted equally at 25%:</p>
             
-            <h3>Key Grading Criteria</h3>
+            <h3>1. Corners (25%)</h3>
             <ul>
-                <li><strong>Corners (25%):</strong> Examines corner sharpness, wear, and rounding</li>
-                <li><strong>Edges (20%):</strong> Checks for chipping, whitening, and roughness</li>
-                <li><strong>Surface (25%):</strong> Looks for scratches, creases, stains, and print defects</li>
-                <li><strong>Centering (15%):</strong> Analyzes image placement and border balance</li>
-                <li><strong>Print Quality (15%):</strong> Evaluates focus, color accuracy, and registration</li>
+                <li>Evaluates corner sharpness, wear, and rounding</li>
+                <li>Checks for corner touches, fraying, and surface compromise</li>
+                <li>Ranges from pristine sharp corners to misshaped/fallen off</li>
             </ul>
             
-            <h3>Analysis Process</h3>
+            <h3>2. Edges (25%)</h3>
+            <ul>
+                <li>Examines edge condition for chipping, whitening, and roughness</li>
+                <li>Looks for notches, tears, and fill artifacts</li>
+                <li>Assesses edge surface wear and integrity</li>
+            </ul>
+            
+            <h3>3. Surface (25%)</h3>
+            <ul>
+                <li>Analyzes scratches, creases, wrinkles, and stains</li>
+                <li>Checks for print defects and imperfections</li>
+                <li>Evaluates overall surface integrity and gloss retention</li>
+            </ul>
+            
+            <h3>4. Centering (25%)</h3>
+            <ul>
+                <li>Measures image placement within borders</li>
+                <li>Compares left/right and top/bottom ratios</li>
+                <li>Ranges from perfect 51/49 to severely off-center 95/5</li>
+            </ul>
+            
+            <h2>How Grading Works</h2>
             <ol>
-                <li>Images are uploaded (front and back of the card)</li>
-                <li>Computer vision algorithms analyze each grading criterion</li>
-                <li>Both sides are evaluated (card receives the lower score if sides differ)</li>
-                <li>Category scores are weighted and combined for an overall grade</li>
-                <li>Results include detailed breakdown and explanations</li>
+                <li><strong>Image Upload:</strong> Both front and back images are uploaded</li>
+                <li><strong>Computer Vision Analysis:</strong> AI algorithms analyze each category</li>
+                <li><strong>Category Scoring:</strong> Each category receives a score from 100-1000</li>
+                <li><strong>Dual-Side Evaluation:</strong> Both sides are analyzed; card receives the lower score per category</li>
+                <li><strong>Weighted Combination:</strong> Category scores are combined using equal 25% weights</li>
+                <li><strong>Final Grade:</strong> Overall score maps to one of 19 grade levels</li>
             </ol>
             
             <div class="info-box">
-                <h3>Important Notes on Accuracy</h3>
-                <p><strong>For best results:</strong></p>
+                <h3>Important Notes</h3>
                 <ul>
-                    <li>Use high-resolution images (at least 800px on the smallest side)</li>
-                    <li>Ensure good, even lighting without glare or shadows</li>
-                    <li>Capture the entire card with clear borders visible</li>
-                    <li>Take photos on a contrasting background</li>
-                    <li>Avoid using flash which can create glare</li>
-                </ul>
-                
-                <p style="margin-top: 15px;"><strong>Limitations:</strong></p>
-                <ul>
-                    <li>This is an AI estimate and NOT an official PSA grade</li>
-                    <li>Actual PSA grading considers factors not visible in photos</li>
-                    <li>Image quality directly impacts accuracy</li>
-                    <li>Some card-specific issues may not be detectable</li>
-                    <li>For official grading and authentication, submit to PSA directly</li>
+                    <li>This is an <strong>AI estimate</strong>, not an official professional grade</li>
+                    <li>Image quality directly impacts grading accuracy</li>
+                    <li>Use high-resolution, well-lit images for best results</li>
+                    <li>Scores are for informational and comparative purposes</li>
+                    <li>Physical card condition may differ from what's visible in photos</li>
                 </ul>
             </div>
             
-            <h2>Achieving Consistent Results</h2>
-            <p>
-                To get the most accurate and consistent grading estimates:
-            </p>
+            <h2>Tips for Accurate Grading</h2>
             <ul>
-                <li><strong>Consistent Photography:</strong> Use the same lighting setup and camera angle for all cards</li>
-                <li><strong>High Quality Images:</strong> Higher resolution images provide more detail for analysis</li>
-                <li><strong>Clean Cards:</strong> Remove any dust or fingerprints before photographing</li>
-                <li><strong>Multiple Angles:</strong> While the app requires front/back, ensuring both images are clear helps</li>
-                <li><strong>Flat Surface:</strong> Photograph cards on a flat surface to avoid distortion</li>
+                <li><strong>Lighting:</strong> Use even, natural lighting without glare or shadows</li>
+                <li><strong>Resolution:</strong> Capture images at 800px minimum on smallest dimension</li>
+                <li><strong>Focus:</strong> Ensure card is in sharp focus across entire surface</li>
+                <li><strong>Background:</strong> Use contrasting, solid-color background</li>
+                <li><strong>Positioning:</strong> Keep camera parallel to card for accurate centering assessment</li>
+                <li><strong>Coverage:</strong> Include entire card with all borders visible</li>
             </ul>
             
             <a href="/" class="back-button">← Back to Grading</a>
@@ -252,3 +335,5 @@
     </div>
 </body>
 </html>
+                        <th>Grade</th>
+                        <th>Designation</th>
