@@ -8,6 +8,8 @@
 - ✅ Running in PyCharm or other IDEs
 - ✅ Troubleshooting common issues
 
+**🔍 Can't see the folder in VS Code?** → See [VSCODE_SETUP.md](VSCODE_SETUP.md) for troubleshooting.
+
 ## Where to Upload Cards
 
 ![Card Upload Interface](https://github.com/user-attachments/assets/29a09b70-7ce5-4273-a2a9-59a306df2ea2)

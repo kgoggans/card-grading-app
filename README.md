@@ -6,6 +6,8 @@ An AI-powered web application that analyzes sports card images and provides comp
 
 **Can I run this in VS Code?** → **YES!** See [HOW_TO_RUN.md](HOW_TO_RUN.md) for detailed instructions.
 
+**🔍 Can't see the folder in VS Code?** → See [VSCODE_SETUP.md](VSCODE_SETUP.md) for troubleshooting.
+
 You can run this app in:
 - ✅ **VS Code** (recommended for beginners) - [See guide](HOW_TO_RUN.md#method-1-running-in-vs-code-recommended-for-beginners)
 - ✅ **Command Line / Terminal** - [See guide](HOW_TO_RUN.md#method-2-running-from-command-line--terminal)

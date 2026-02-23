@@ -14,14 +14,34 @@ You can also run it from:
 
 ---
 
+## ⚠️ Can't See the Folder in VS Code?
+
+**If you don't see the card-grading-app folder in VS Code**, see the complete troubleshooting guide:
+
+👉 **[VSCODE_SETUP.md - "I Don't See the Folder" Guide](VSCODE_SETUP.md)** 👈
+
+Common issues covered:
+- Where to find the downloaded/cloned project
+- How to properly open a folder (not just a file)
+- Fixing "empty folder" or "wrong folder" problems
+- Step-by-step checklist to verify correct setup
+
+---
+
 ## 🚀 Method 1: Running in VS Code (Recommended for Beginners)
 
 ### Step 1: Open the Project in VS Code
 
 1. **Open VS Code**
-2. Click **File** → **Open Folder**
+2. Click **File** → **Open Folder** (NOT "Open File")
 3. Navigate to and select the `card-grading-app` folder
 4. Click **Select Folder**
+
+**⚠️ Can't find the folder?** See [VSCODE_SETUP.md](VSCODE_SETUP.md) for help locating it.
+
+**✅ Verify it's open correctly:**
+- Explorer panel (left sidebar) shows: `app.py`, `requirements.txt`, `templates/` folder
+- Window title shows: "card-grading-app"
 
 ### Step 2: Open the Terminal in VS Code
 
