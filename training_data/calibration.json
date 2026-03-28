@@ -1,0 +1,16 @@
+{
+  "category_weights": {
+    "corners": 0.474586,
+    "edges": 0.238822,
+    "surface": 0.060102,
+    "centering": 0.22649
+  },
+  "score_bias": 153.1154,
+  "training_samples": 61,
+  "skipped_samples": 0,
+  "mae_before": 187.5,
+  "mae_after": 44.7,
+  "grade_accuracy_before": 6.6,
+  "grade_accuracy_after": 73.8,
+  "calibrated_at": "2026-03-04T21:10:18.507903"
+}

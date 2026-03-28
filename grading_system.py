@@ -1,3 +1,6 @@
+import json
+import os
+
 """
 Custom Card Grading System Module
 
@@ -257,25 +260,28 @@ class PSAGradingCriteria:
         return None
     
     @staticmethod
-    def calculate_overall_grade(category_scores):
+    def calculate_overall_grade(category_scores, weights=None):
         """
-        Calculate overall grade based on category scores
+        Calculate overall grade based on category scores.
         
         Args:
             category_scores (dict): Dictionary with category names and scores (0-1000)
+            weights (dict|None): Optional custom weight dict; falls back to CATEGORY_WEIGHTS
             
         Returns:
             int: Overall numerical score (100-1000)
         """
         if not category_scores:
             return 100
+
+        effective_weights = weights if weights is not None else PSAGradingCriteria.CATEGORY_WEIGHTS
             
         weighted_sum = 0
         total_weight = 0
         
         for category, score in category_scores.items():
-            if category in PSAGradingCriteria.CATEGORY_WEIGHTS:
-                weight = PSAGradingCriteria.CATEGORY_WEIGHTS[category]
+            if category in effective_weights:
+                weight = effective_weights[category]
                 weighted_sum += score * weight
                 total_weight += weight
         
@@ -295,9 +301,37 @@ class PSAGradingCriteria:
 
 class CardGrader:
     """Main class for grading sports cards"""
+
+    # Path to calibration file (sibling of this module inside project root)
+    _CALIBRATION_PATH = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        'training_data', 'calibration.json'
+    )
     
     def __init__(self):
         self.criteria = PSAGradingCriteria()
+        self._load_calibration()
+
+    def _load_calibration(self):
+        """Load calibrated weights and bias from training_data/calibration.json."""
+        self.calibrated_weights = dict(PSAGradingCriteria.CATEGORY_WEIGHTS)  # defaults
+        self.score_bias = 0.0
+        self.calibration_meta = None
+        try:
+            if os.path.exists(self._CALIBRATION_PATH):
+                with open(self._CALIBRATION_PATH, 'r') as f:
+                    data = json.load(f)
+                if 'category_weights' in data:
+                    loaded = {k: float(v) for k, v in data['category_weights'].items()}
+                    # Only accept if all 4 categories present and sane
+                    cats = {'corners', 'edges', 'surface', 'centering'}
+                    if cats.issubset(loaded.keys()):
+                        self.calibrated_weights = loaded
+                if 'score_bias' in data:
+                    self.score_bias = float(data['score_bias'])
+                self.calibration_meta = data
+        except Exception:
+            pass  # silently fall back to defaults
     
     def analyze_corners(self, corner_data):
         """
@@ -339,26 +373,26 @@ class CardGrader:
             score = 970
             
         # MINT (900-949): Sharp/square, up to 2 light touches on front, multiple on back
-        elif worn_corners <= 2 and sharpness >= 8.5 and rounding_level == 0:
+        elif worn_corners <= 2 and sharpness >= 8.0 and rounding_level <= 0.8:
             score = 925
             
         # NEAR MINT-MINT+ (850-899): Multiple light touches on front, small missing stock on back
-        elif worn_corners <= 2 and sharpness >= 8.0 and rounding_level <= 1:
+        elif worn_corners <= 2 and sharpness >= 7.5 and rounding_level <= 1.5:
             if missing_stock:
                 score = 860
             else:
                 score = 875
                 
         # NEAR MINT-MINT (800-849): Corner may start showing minor wear
-        elif worn_corners <= 3 and sharpness >= 7.5 and rounding_level <= 2:
+        elif worn_corners <= 3 and sharpness >= 7.0 and rounding_level <= 2.5:
             score = 825
             
         # NEAR MINT+ (750-799): Corners lose sharpness, all 4 may have touches
-        elif worn_corners == 4 and sharpness >= 7.0 and rounding_level <= 2:
+        elif worn_corners <= 3 and sharpness >= 6.2 and rounding_level <= 3.5:
             score = 775
             
         # NEAR MINT (700-749): Corners square but showing fraying, slight bend possible
-        elif worn_corners == 4 and sharpness >= 6.0 and rounding_level <= 3:
+        elif worn_corners <= 4 and sharpness >= 5.5 and rounding_level <= 4.0:
             score = 725
             
         # EXCELLENT-MINT+ (650-699): Corner losing shape, 3-4 corners with significant fraying
@@ -393,13 +427,13 @@ class CardGrader:
         elif rounding_level >= 9 and worn_corners == 4:
             score = 325
             
-        # GOOD+ (250-299): Extreme rounding getting outside corner areas
-        elif rounding_level >= 9.5:
-            score = 275
-            
         # GOOD (200-249): All four corners extreme rounding and dirtiness
         elif rounding_level >= 9.5 and fraying >= 9:
             score = 225
+
+        # GOOD+ (250-299): Extreme rounding getting outside corner areas
+        elif rounding_level >= 9.5:
+            score = 275
             
         # FAIR (150-199): Corners falling apart, stock hanging by fiber
         elif rounding_level >= 9.8:
@@ -407,7 +441,14 @@ class CardGrader:
             
         # POOR (100-149): Corners misshaped, parts fallen off
         else:
-            score = 125
+            score = int(max(
+                250,
+                base_score
+                - (worn_corners * 35)
+                - (rounding_level * 20)
+                - (fraying * 15)
+                - (80 if missing_stock else 0)
+            ))
         
         # Adjust based on additional factors
         # Deduct for excessive fraying
@@ -580,6 +621,21 @@ class CardGrader:
         gloss_loss = surface_data.get('gloss_loss', 0)
         dents = surface_data.get('dent_count', 0)
         scuffing = surface_data.get('scuffing', 0)
+
+        defect_index = (
+            (scratches * 0.8) +
+            (creases * 4.0) +
+            (wrinkles * 1.5) +
+            (wrinkle_length * 1.2) +
+            (stains * 2.0) +
+            (water_damage * 2.5) +
+            (print_defects * 1.2) +
+            (gloss_loss * 0.8) +
+            (dents * 1.2) +
+            (scuffing * 1.0) +
+            (pit_count * 0.8) +
+            (pit_size * 0.8)
+        )
         
         # PRISTINE (990-1000): Flawless surface, only NHODs
         if (scratches == 0 and pit_count == 0 and creases == 0 and wrinkles == 0 and 
@@ -667,7 +723,7 @@ class CardGrader:
             
         # POOR (100-149): Combination of significant flaws, tape/glue on front
         else:
-            score = 125
+            score = int(max(180, 980 - (defect_index * 32)))
         
         # Apply additional deductions
         # Heavy penalty for creases (major defect)
@@ -696,7 +752,7 @@ class CardGrader:
         # Ensure score stays within valid range
         return max(100, min(1000, int(score)))
     
-    def analyze_centering(self, centering_data):
+    def analyze_centering(self, centering_data, side='front'):
         """
         Analyze centering using the custom grading criteria
         
@@ -715,45 +771,51 @@ class CardGrader:
         
         max_deviation = max(lr_deviation, tb_deviation)
         
-        # Apply centering standards from the criteria
-        if max_deviation <= 1:  # ~51/49
-            score = 1000  # PRISTINE
-        elif max_deviation <= 5:  # ~55/45
-            score = 970  # GEM MINT
-        elif max_deviation <= 10:  # ~60/40
-            score = 920  # MINT
-        elif max_deviation <= 12.5:  # ~62.5/37.5
-            score = 870  # NEAR MINT-MINT+
-        elif max_deviation <= 15:  # ~65/35
-            score = 820  # NEAR MINT-MINT
-        elif max_deviation <= 17.5:  # ~67.5/32.5
-            score = 770  # NEAR MINT+
-        elif max_deviation <= 20:  # ~70/30
-            score = 720  # NEAR MINT
-        elif max_deviation <= 22.5:  # ~72.5/27.5
-            score = 670  # EXCELLENT-MINT+
-        elif max_deviation <= 25:  # ~75/25
-            score = 620  # EXCELLENT-MINT
-        elif max_deviation <= 27.5:  # ~77.5/22.5
-            score = 570  # EXCELLENT+
-        elif max_deviation <= 30:  # ~80/20
-            score = 520  # EXCELLENT
-        elif max_deviation <= 32.5:  # ~82.5/17.5
-            score = 470  # VERY GOOD-EXCELLENT+
-        elif max_deviation <= 35:  # ~85/15
-            score = 420  # VERY GOOD-EXCELLENT
-        elif max_deviation <= 37.5:  # ~87.5/12.5
-            score = 370  # VERY GOOD+
-        elif max_deviation <= 40:  # ~90/10
-            score = 320  # VERY GOOD
-        elif max_deviation <= 42.5:  # ~92.5/7.5
-            score = 270  # GOOD+
-        elif max_deviation <= 45:  # ~95/5
-            score = 220  # GOOD
-        elif max_deviation <= 48.33:  # ~98.33/1.67
-            score = 170  # FAIR
+        # PSA centering standards differ significantly for front vs back
+        # Front: tight (55/45 = deviation of 5 for PSA 10)
+        # Back: lenient (70/30 = deviation of 20 for PSA 10)
+        if side == 'back':
+            thresholds = [
+                (20,    1000),  # PSA PRISTINE: 70/30
+                (25,     970),  # PSA GEM MINT: 75/25
+                (30,     920),  # PSA MINT: 80/20
+                (32.5,   870),  # PSA NM-MT+
+                (35,     820),  # PSA NM-MT
+                (37.5,   770),  # PSA NM+
+                (40,     720),  # PSA NM
+                (42.5,   670),  # PSA EX-MT+
+                (45,     620),  # PSA EX-MT
+                (47.5,   570),  # PSA EX+
+                (48.33,  520),  # PSA EX
+                (49.0,   470),  # PSA VG-EX+
+            ]
         else:
-            score = 120  # POOR
+            thresholds = [
+                (1,     1000),  # PSA PRISTINE: 51/49
+                (5,      970),  # PSA GEM MINT: 55/45
+                (10,     920),  # PSA MINT: 60/40
+                (12.5,   870),  # PSA NM-MT+: 62.5/37.5
+                (15,     820),  # PSA NM-MT: 65/35
+                (17.5,   770),  # PSA NM+: 67.5/32.5
+                (20,     720),  # PSA NM: 70/30
+                (22.5,   670),  # PSA EX-MT+
+                (25,     620),  # PSA EX-MT
+                (27.5,   570),  # PSA EX+
+                (30,     520),  # PSA EX
+                (32.5,   470),  # PSA VG-EX+
+                (35,     420),  # PSA VG-EX
+                (37.5,   370),  # PSA VG+
+                (40,     320),  # PSA VG
+                (42.5,   270),  # PSA GOOD+
+                (45,     220),  # PSA GOOD
+                (48.33,  170),  # PSA FAIR
+            ]
+
+        score = 120  # POOR fallback
+        for dev_limit, dev_score in thresholds:
+            if max_deviation <= dev_limit:
+                score = dev_score
+                break
         
         return int(score)
     
@@ -777,10 +839,16 @@ class CardGrader:
         for category in self.criteria.CATEGORY_WEIGHTS.keys():
             front_score = front_scores.get(category, 100)
             back_score = back_scores.get(category, 100)
-            combined_scores[category] = min(front_score, back_score)
+            worse_score = min(front_score, back_score)
+            better_score = max(front_score, back_score)
+            combined_scores[category] = int(round((worse_score * 0.7) + (better_score * 0.3)))
         
-        # Calculate overall numerical score (100-1000)
-        overall_score = self.criteria.calculate_overall_grade(combined_scores)
+        # Calculate overall numerical score using calibrated category weights
+        overall_score = self.criteria.calculate_overall_grade(
+            combined_scores, weights=self.calibrated_weights
+        )
+        # Apply learned score bias (shifts all predictions up or down)
+        overall_score = max(100, min(1000, round(overall_score + self.score_bias)))
         
         # Get grade information from the score
         numeric_grade, grade_name, description = self.criteria.get_grade_from_score(overall_score)
@@ -802,7 +870,7 @@ class CardGrader:
             'corners': self.analyze_corners(analysis_data.get('corners', {})),
             'edges': self.analyze_edges(analysis_data.get('edges', {})),
             'surface': self.analyze_surface(analysis_data.get('surface', {})),
-            'centering': self.analyze_centering(analysis_data.get('centering', {}))
+            'centering': self.analyze_centering(analysis_data.get('centering', {}), side=side_name)
         }
         return scores
     
