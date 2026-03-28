@@ -819,6 +819,9 @@
               </div>
             </div>
 
+            <!-- Comps warning (rate limit etc) -->
+            <div id="df-comps-warning" style="display:none; background: #3d2600; border-left: 4px solid #ff9800; padding: 10px 14px; border-radius: 6px; margin-top: 12px; font-size: 0.85em; color: #ffcc80;"></div>
+
             <!-- Results table -->
             <div id="df-results" style="display:none; overflow-x: auto; margin-top: 8px;">
               <table style="width: 100%; border-collapse: collapse; font-size: 0.84em; color: #ddd;">
@@ -2020,7 +2023,7 @@
           const gradingCost  = document.getElementById('df-grading-cost').value;
 
           // UI reset
-          ['df-loading','df-summary','df-results','df-empty','df-error'].forEach(id => {
+          ['df-loading','df-summary','df-results','df-empty','df-error','df-comps-warning'].forEach(id => {
             document.getElementById(id).style.display = 'none';
           });
           document.getElementById('df-loading').style.display = 'block';
@@ -2067,6 +2070,18 @@
           const buyCount = data.deals.filter(d => d.verdict === 'BUY').length;
           document.getElementById('df-stat-buy-count').textContent = buyCount;
           document.getElementById('df-summary').style.display = 'block';
+
+          // Show comps warning if Finding API failed (rate limit etc)
+          const compWarn = document.getElementById('df-comps-warning');
+          if (data.sold_comps_error) {
+            const isRateLimit = data.sold_comps_error.includes('10001') || data.sold_comps_error.includes('RateLimiter');
+            compWarn.textContent = isRateLimit
+              ? '⚠️ eBay Finding API daily limit reached (5K calls/day). Sold comp prices are unavailable until midnight Pacific. Active listings are still shown. Try again tomorrow or after midnight.'
+              : '⚠️ Could not load sold comps: ' + data.sold_comps_error;
+            compWarn.style.display = 'block';
+          } else {
+            compWarn.style.display = 'none';
+          }
 
           // Build table rows
           const tbody = document.getElementById('df-tbody');

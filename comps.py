@@ -47,7 +47,7 @@ def _cache_set(key: str, data, ttl: int = _CACHE_TTL_SECS):
     _comps_cache[key] = {'data': data, 'expires_at': time.time() + ttl}
 
 
-def _parse_psa_grade_from_title(title: str) -> float | None:
+def _parse_psa_grade_from_title(title: str) -> object:
     """
     Extract a PSA numeric grade from a listing title.
     Handles formats like: PSA 10, PSA GEM MINT 10, PSA 9.5, PSA MINT 9
@@ -65,7 +65,7 @@ def _parse_psa_grade_from_title(title: str) -> float | None:
     return None
 
 
-def _compute_stats(prices: list[float]) -> dict | None:
+def _compute_stats(prices: list) -> object:
     if not prices:
         return None
     s = sorted(prices)
@@ -162,7 +162,7 @@ def _call_finding_api(operation: str, params: dict, timeout: int = 10) -> dict:
         raise HTTPError(exc.url, exc.code, f'{exc.reason} | {body[:300]}', exc.headers, None) from None
 
 
-def _parse_finding_response(data: dict, operation: str) -> list[dict]:
+def _parse_finding_response(data: dict, operation: str) -> list:
     """Extract item list from a findCompletedItems / findItemsAdvanced response."""
     key = f'{operation}Response'
     search_result = data.get(key, [{}])[0].get('searchResult', [{}])[0]
@@ -543,14 +543,15 @@ def _fetch_graded_comps_bulk(query: str, grades: list) -> dict:
 
     try:
         data = _call_finding_api('findCompletedItems', params)
-    except Exception:
-        # On any error return empty stats — fall back gracefully
-        return {int(g): None for g in grades}
+    except Exception as exc:
+        empty = {int(g): None for g in grades}
+        empty['_error'] = str(exc)
+        return empty
 
     items = _parse_finding_response(data, 'findCompletedItems')
 
     # Bucket prices by grade
-    buckets: dict[int, list[float]] = {int(g): [] for g in grades}
+    buckets = {int(g): [] for g in grades}
     for item in items:
         grade = _parse_psa_grade_from_title(item['title'])
         if grade is not None:
@@ -614,8 +615,11 @@ def find_deals(
 
     raw_result = search_sold_listings(query, max_results=20)
     sold_comps['raw'] = raw_result.get('stats')
+    sold_comps_error = raw_result.get('error')  # captures rate limit / API errors
 
     graded_bulk = _fetch_graded_comps_bulk(query, grade_levels)
+    if graded_bulk.get('_error') and not sold_comps_error:
+        sold_comps_error = graded_bulk['_error']
     for g in grade_levels:
         sold_comps[f'psa{int(g)}'] = graded_bulk.get(int(g))
 
@@ -697,13 +701,14 @@ def find_deals(
     deals.sort(key=lambda d: (verdict_order.get(d['verdict'], 4), -(d['raw_profit'] or float('-inf'))))
 
     return {
-        'success':      True,
-        'query':        query,
-        'deals':        deals,
-        'sold_comps':   sold_comps,
-        'grading_cost': grading_cost,
-        'ebay_fee_pct': ebay_fee_pct,
-        'error':        None,
+        'success':           True,
+        'query':             query,
+        'deals':             deals,
+        'sold_comps':        sold_comps,
+        'sold_comps_error':  sold_comps_error,
+        'grading_cost':      grading_cost,
+        'ebay_fee_pct':      ebay_fee_pct,
+        'error':             None,
     }
 
 
