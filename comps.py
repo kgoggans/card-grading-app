@@ -350,21 +350,79 @@ def _fetch_via_finding_api(query: str, grade: float, max_results: int) -> tuple:
 
 def search_active_listings(query: str, max_results: int = 20) -> dict:
     """
-    Search eBay ACTIVE (current) listings for a card using findItemsAdvanced.
-
-    Returns dict:
-        {
-            success: bool,
-            query: str,
-            items: list[{title, price, currency, url, condition, listing_type}],
-            error: str | None
-        }
+    Search eBay ACTIVE listings for a card.
+    Uses Browse API (5M calls/day) when EBAY_CLIENT_SECRET is set,
+    falls back to Finding API (5K calls/day) otherwise.
     """
     if not query.strip():
         return {'success': False, 'query': query, 'items': [], 'error': 'Empty search query'}
 
-    # Use multi-value filter format: itemFilter(0).value(0), value(1), value(2)
-    # Repeating the same filter name causes eBay API 500 errors.
+    if _get_client_secret():
+        return _active_via_browse_api(query, max_results)
+    return _active_via_finding_api(query, max_results)
+
+
+def _active_via_browse_api(query: str, max_results: int) -> dict:
+    """Fetch active listings via Browse API (5M calls/day)."""
+    try:
+        token = _get_browse_token()
+    except Exception as exc:
+        return {'success': False, 'query': query, 'items': [], 'error': f'Browse API token error: {exc}'}
+
+    params = urllib.parse.urlencode({
+        'q':     query.strip(),
+        'limit': str(min(max_results, 50)),
+        'sort':  'price',
+    })
+    url = f'{_BROWSE_API}?{params}'
+    req = Request(url, headers={
+        'Authorization':            f'Bearer {token}',
+        'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+    })
+
+    try:
+        with urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+    except HTTPError as exc:
+        body = ''
+        try:
+            body = exc.read().decode('utf-8', errors='ignore')
+        except Exception:
+            pass
+        return {'success': False, 'query': query, 'items': [], 'error': f'Browse API error {exc.code}: {body[:200]}'}
+    except Exception as exc:
+        return {'success': False, 'query': query, 'items': [], 'error': f'Browse API request failed: {exc}'}
+
+    items = []
+    for item in data.get('itemSummaries', []):
+        try:
+            price_info   = item.get('price', {})
+            price        = float(price_info.get('value', 0))
+            ship_options = item.get('shippingOptions', [])
+            shipping     = 0.0
+            if ship_options:
+                s = ship_options[0].get('shippingCost', {})
+                try:
+                    shipping = float(s.get('value', 0))
+                except (ValueError, TypeError):
+                    pass
+            items.append({
+                'title':        item.get('title', ''),
+                'price':        price,
+                'shipping':     shipping,
+                'total_cost':   round(price + shipping, 2),
+                'currency':     price_info.get('currency', 'USD'),
+                'url':          item.get('itemWebUrl', ''),
+                'condition':    item.get('condition', 'Unknown'),
+                'listing_type': item.get('buyingOptions', ['Unknown'])[0] if item.get('buyingOptions') else 'Unknown',
+            })
+        except Exception:
+            continue
+    return {'success': True, 'query': query, 'items': items, 'error': None}
+
+
+def _active_via_finding_api(query: str, max_results: int) -> dict:
+    """Fetch active listings via Finding API (5K calls/day fallback)."""
     params = {
         'keywords':                       query.strip(),
         'itemFilter(0).name':             'ListingType',
@@ -384,16 +442,9 @@ def search_active_listings(query: str, max_results: int = 20) -> dict:
     except Exception as exc:
         return {'success': False, 'query': query, 'items': [], 'error': f'Unexpected error: {exc}'}
 
-    items = _parse_active_response(data)
-    return {'success': True, 'query': query, 'items': items, 'error': None}
-
-
-def _parse_active_response(data: dict) -> list[dict]:
-    """Extract item list from a findItemsByKeywords response."""
     search_result = data.get('findItemsByKeywordsResponse', [{}])[0].get('searchResult', [{}])[0]
-    count = int(search_result.get('@count', 0))
-    if count == 0:
-        return []
+    if int(search_result.get('@count', 0)) == 0:
+        return {'success': True, 'query': query, 'items': [], 'error': None}
 
     items = []
     for raw in search_result.get('item', []):
@@ -404,28 +455,26 @@ def _parse_active_response(data: dict) -> list[dict]:
             url    = raw['viewItemURL'][0]
             cond   = raw.get('condition', [{}])[0].get('conditionDisplayName', ['Unknown'])[0]
             ltype  = raw.get('listingInfo', [{}])[0].get('listingType', ['Unknown'])[0]
-            # Include shipping if available
             shipping_cost = 0.0
-            shipping_info = raw.get('shippingInfo', [{}])[0]
-            ship_cost_list = shipping_info.get('shippingServiceCost', [])
+            ship_cost_list = raw.get('shippingInfo', [{}])[0].get('shippingServiceCost', [])
             if ship_cost_list:
                 try:
                     shipping_cost = float(ship_cost_list[0].get('__value__', 0))
                 except (ValueError, TypeError):
                     pass
             items.append({
-                'title':         title,
-                'price':         price,
-                'shipping':      shipping_cost,
-                'total_cost':    round(price + shipping_cost, 2),
-                'currency':      curr,
-                'url':           url,
-                'condition':     cond,
-                'listing_type':  ltype,
+                'title':        title,
+                'price':        price,
+                'shipping':     shipping_cost,
+                'total_cost':   round(price + shipping_cost, 2),
+                'currency':     curr,
+                'url':          url,
+                'condition':    cond,
+                'listing_type': ltype,
             })
         except (KeyError, IndexError, ValueError, TypeError):
             continue
-    return items
+    return {'success': True, 'query': query, 'items': items, 'error': None}
 
 
 def find_deals(
