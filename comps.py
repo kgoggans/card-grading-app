@@ -28,6 +28,57 @@ _OAUTH_URL    = 'https://api.ebay.com/identity/v1/oauth2/token'
 # Cached OAuth token {access_token, expires_at}
 _oauth_cache: dict = {}
 
+# ---------------------------------------------------------------------------
+# Sold-comps cache — avoids re-hitting the 5K/day Finding API for the same
+# queries.  Keys are normalized query strings; TTL default = 6 hours.
+# ---------------------------------------------------------------------------
+_comps_cache: dict = {}
+_CACHE_TTL_SECS: int = 6 * 3600  # 6 hours
+
+
+def _cache_get(key: str):
+    entry = _comps_cache.get(key)
+    if entry and time.time() < entry['expires_at']:
+        return entry['data']
+    return None
+
+
+def _cache_set(key: str, data, ttl: int = _CACHE_TTL_SECS):
+    _comps_cache[key] = {'data': data, 'expires_at': time.time() + ttl}
+
+
+def _parse_psa_grade_from_title(title: str) -> float | None:
+    """
+    Extract a PSA numeric grade from a listing title.
+    Handles formats like: PSA 10, PSA GEM MINT 10, PSA 9.5, PSA MINT 9
+    """
+    m = re.search(
+        r'\bPSA\b[\s\-]*(?:[A-Z][A-Z\s\-]*?)?\b(10|[1-9](?:\.5)?)\b',
+        title,
+        re.IGNORECASE,
+    )
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            pass
+    return None
+
+
+def _compute_stats(prices: list[float]) -> dict | None:
+    if not prices:
+        return None
+    s = sorted(prices)
+    n = len(s)
+    median = s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+    return {
+        'count':  n,
+        'median': round(median, 2),
+        'mean':   round(sum(s) / n, 2),
+        'low':    round(min(s), 2),
+        'high':   round(max(s), 2),
+    }
+
 
 def _get_app_id() -> str:
     return os.environ.get('EBAY_APP_ID', '').strip()
@@ -167,6 +218,11 @@ def search_sold_listings(query: str, psa_grade=None, max_results: int = 12) -> d
     if psa_grade is not None:
         full_query = f'{full_query} PSA {psa_grade}'
 
+    cache_key = f'sold:{full_query.lower()}:{max_results}'
+    cached = _cache_get(cache_key)
+    if cached:
+        return cached
+
     params = {
         'keywords': full_query,
         'itemFilter(0).name':  'SoldItemsOnly',
@@ -194,24 +250,10 @@ def search_sold_listings(query: str, psa_grade=None, max_results: int = 12) -> d
                 'error': f'Unexpected error: {exc}'}
 
     items = _parse_finding_response(data, 'findCompletedItems')
-
-    if not items:
-        return {'success': True, 'query': full_query, 'items': [], 'stats': None, 'error': None}
-
-    prices = [i['price'] for i in items]
-    prices_sorted = sorted(prices)
-    n = len(prices_sorted)
-    median = prices_sorted[n // 2] if n % 2 else (prices_sorted[n//2 - 1] + prices_sorted[n//2]) / 2
-
-    stats = {
-        'count':  n,
-        'median': round(median, 2),
-        'mean':   round(sum(prices) / n, 2),
-        'low':    round(min(prices), 2),
-        'high':   round(max(prices), 2),
-    }
-
-    return {'success': True, 'query': full_query, 'items': items, 'stats': stats, 'error': None}
+    stats = _compute_stats([i['price'] for i in items])
+    result = {'success': True, 'query': full_query, 'items': items, 'stats': stats, 'error': None}
+    _cache_set(cache_key, result)
+    return result
 
 
 def fetch_training_candidates(query: str, grade: float, max_results: int = 15) -> tuple:
@@ -477,6 +519,50 @@ def _active_via_finding_api(query: str, max_results: int) -> dict:
     return {'success': True, 'query': query, 'items': items, 'error': None}
 
 
+def _fetch_graded_comps_bulk(query: str, grades: list) -> dict:
+    """
+    Fetch graded sold comps for multiple PSA grades with a SINGLE API call.
+    Searches "PSA {query}" with max results, parses grade from each title,
+    and buckets into per-grade stats.
+
+    Returns {grade_int: stats_dict | None, ...}  e.g. {7: {...}, 8: {...}, 9: {...}, 10: {...}}
+    """
+    cache_key = f'bulk_graded:{query.lower().strip()}'
+    cached = _cache_get(cache_key)
+    if cached:
+        return cached
+
+    full_query = f'PSA {query.strip()}'
+    params = {
+        'keywords':                       full_query,
+        'itemFilter(0).name':             'SoldItemsOnly',
+        'itemFilter(0).value':            'true',
+        'sortOrder':                      'EndTimeSoonest',
+        'paginationInput.entriesPerPage': '50',
+    }
+
+    try:
+        data = _call_finding_api('findCompletedItems', params)
+    except Exception:
+        # On any error return empty stats — fall back gracefully
+        return {int(g): None for g in grades}
+
+    items = _parse_finding_response(data, 'findCompletedItems')
+
+    # Bucket prices by grade
+    buckets: dict[int, list[float]] = {int(g): [] for g in grades}
+    for item in items:
+        grade = _parse_psa_grade_from_title(item['title'])
+        if grade is not None:
+            key = int(grade) if grade == int(grade) else grade
+            if key in buckets:
+                buckets[key].append(item['price'])
+
+    result = {g: _compute_stats(prices) for g, prices in buckets.items()}
+    _cache_set(cache_key, result)
+    return result
+
+
 def find_deals(
     query: str,
     psa_grade_estimate: float = None,
@@ -520,16 +606,18 @@ def find_deals(
     if not active['items']:
         return {'success': True, 'query': query, 'deals': [], 'sold_comps': {}, 'error': 'No active listings found'}
 
-    # ---- Fetch sold comps in parallel (sequential calls, fast enough) ----
-    grade_levels = [7, 8, 9, 10] if psa_grade_estimate is None else [psa_grade_estimate]
+    # ---- Fetch sold comps: 2 API calls total (was 5), both cached 6 hrs ----
+    # Call 1: raw (ungraded) sold comps
+    # Call 2: one broad "PSA {card}" query, bucket results by grade from title
+    grade_levels = [7, 8, 9, 10] if psa_grade_estimate is None else [int(psa_grade_estimate)]
     sold_comps = {}
 
     raw_result = search_sold_listings(query, max_results=20)
     sold_comps['raw'] = raw_result.get('stats')
 
+    graded_bulk = _fetch_graded_comps_bulk(query, grade_levels)
     for g in grade_levels:
-        graded_result = search_sold_listings(query, psa_grade=g, max_results=15)
-        sold_comps[f'psa{int(g)}'] = graded_result.get('stats')
+        sold_comps[f'psa{int(g)}'] = graded_bulk.get(int(g))
 
     raw_median = sold_comps['raw']['median'] if sold_comps.get('raw') else None
 
@@ -537,8 +625,8 @@ def find_deals(
     grade_medians = {}
     for g in grade_levels:
         key = f'psa{int(g)}'
-        if sold_comps.get(key):
-            grade_medians[g] = sold_comps[key]['median']
+        if sold_comps.get(key) and sold_comps[key].get('median'):
+            grade_medians[int(g)] = sold_comps[key]['median']
 
     # ---- Score each active listing ----
     deals = []
