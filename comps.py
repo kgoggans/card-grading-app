@@ -3,7 +3,7 @@ Market Comparables — SportsCardsPro (primary) + eBay APIs (fallback)
 
 Priority:
   1. SportsCardsPro API (1 call per card, all grades) — requires SPORTSCARDSPRO_API_KEY
-     Sign up at sportscardspro.com → Legendary (~$6/mo) → Subscription page → API/Download
+     Sign up at sportscardspro.com → Legendary ($49/mo) → Subscription page → API/Download
   2. eBay Finding API (findCompletedItems, 5K calls/day) — requires EBAY_APP_ID
   3. eBay Browse API (active listings, 5M calls/day) — requires EBAY_APP_ID + EBAY_CLIENT_SECRET
 
