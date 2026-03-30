@@ -1,12 +1,18 @@
 """
-Market Comparables — SportsCardsPro (primary) + eBay APIs (fallback)
+Market Comparables — priority order:
 
-Priority:
-  1. SportsCardsPro API (1 call per card, all grades) — requires SPORTSCARDSPRO_API_KEY
-     Sign up at sportscardspro.com → Legendary ($49/mo) → Subscription page → API/Download
-  2. eBay Finding API (findCompletedItems, 5K calls/day) — requires EBAY_APP_ID
-  3. eBay Browse API (active listings, 5M calls/day) — requires EBAY_APP_ID + EBAY_CLIENT_SECRET
+  1. Card Hedge AI API (best quality, real sold comps) — requires CARD_HEDGE_API_KEY
+     Sign up at ai.cardhedger.com/api-services → get key from dashboard
+     Auth: X-API-Key header  |  Base: https://api.cardhedger.com
 
+  2. SportsCardsPro API (aggregated prices, 1 call) — requires SPORTSCARDSPRO_API_KEY
+     Sign up at sportscardspro.com → Legendary ($49/mo) → Subscription → API/Download
+
+  3. eBay Finding API (findCompletedItems, 5K calls/day) — requires EBAY_APP_ID
+
+  4. eBay Browse API (active listings, 5M calls/day) — requires EBAY_APP_ID + EBAY_CLIENT_SECRET
+
+  export CARD_HEDGE_API_KEY=your_key
   export SPORTSCARDSPRO_API_KEY=your_40_char_token
   export EBAY_APP_ID=your_app_id
   export EBAY_CLIENT_SECRET=your_cert_id
@@ -27,6 +33,19 @@ _FINDING_API  = 'https://svcs.ebay.com/services/search/FindingService/v1'
 _BROWSE_API   = 'https://api.ebay.com/buy/browse/v1/item_summary/search'
 _OAUTH_URL    = 'https://api.ebay.com/identity/v1/oauth2/token'
 _SCP_BASE_URL = 'https://www.sportscardspro.com/api'
+_CH_BASE_URL  = 'https://api.cardhedger.com'
+
+# Card Hedge grade label map: our int/float grade → CH grade string
+_CH_GRADE_LABELS: dict = {
+    10:  'PSA 10',
+    9.5: 'PSA 9.5',
+    9:   'PSA 9',
+    8.5: 'PSA 8.5',
+    8:   'PSA 8',
+    7.5: 'PSA 7.5',
+    7:   'PSA 7',
+    'raw': 'Raw',
+}
 
 # Candidate field names per grade — tried in order, first non-zero value wins.
 # Confirmed against live API; defensive list handles any future field renames.
@@ -76,6 +95,150 @@ def _parse_psa_grade_from_title(title: str) -> object:
         except ValueError:
             pass
     return None
+
+
+def _ch_price_to_stats(price, count=None, low=None, high=None) -> dict:
+    """Convert a Card Hedge price (float or string) to a stats-compatible dict."""
+    try:
+        median = round(float(price), 2)
+    except (TypeError, ValueError):
+        return None
+    if median <= 0:
+        return None
+    return {
+        'count':  count,
+        'median': median,
+        'mean':   median,
+        'low':    round(float(low), 2) if low is not None else None,
+        'high':   round(float(high), 2) if high is not None else None,
+    }
+
+
+def _ch_post(endpoint: str, body: dict, timeout: int = 12) -> dict:
+    """Make an authenticated POST request to the Card Hedge API."""
+    key = _get_ch_key()
+    url = f'{_CH_BASE_URL}{endpoint}'
+    data = json.dumps(body).encode('utf-8')
+    req = Request(url, data=data, headers={
+        'X-API-Key':    key,
+        'Content-Type': 'application/json',
+        'User-Agent':   'CardGradingApp/2.0',
+    })
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except HTTPError as exc:
+        body_text = ''
+        try:
+            body_text = exc.read().decode('utf-8', errors='ignore')
+        except Exception:
+            pass
+        raise HTTPError(exc.url, exc.code, f'{exc.reason} | {body_text[:200]}', exc.headers, None) from None
+
+
+def _search_card_hedge(query: str) -> dict:
+    """
+    Look up a card on Card Hedge and return per-grade price stats + sold comp items.
+
+    Step 1: POST /v1/cards/card-search  → finds card_id + current grade prices
+    Step 2: POST /v1/cards/comps        → per-grade comp price with actual sold records
+                                          (only called once per grade, results cached)
+
+    Returns:
+        {
+            success:      bool,
+            card_id:      str | None,
+            card_name:    str | None,
+            loose_stats:  stats_dict | None,   # Raw/ungraded
+            grade_stats:  {7: stats|None, 8: ..., 9: ..., 9.5: ..., 10: ...},
+            raw_items:    list[sold_item],      # individual sold records for comps panel
+            error:        str | None,
+        }
+    Never raises.
+    """
+    if not _get_ch_key():
+        return {'success': False, 'card_id': None, 'card_name': None,
+                'loose_stats': None, 'grade_stats': {}, 'raw_items': [], 'error': 'CARD_HEDGE_API_KEY not set'}
+
+    # --- Step 1: card search ---
+    try:
+        search_resp = _ch_post('/v1/cards/card-search', {'search': query.strip(), 'page_size': 5})
+    except Exception as exc:
+        return {'success': False, 'card_id': None, 'card_name': None,
+                'loose_stats': None, 'grade_stats': {}, 'raw_items': [], 'error': f'CH search error: {exc}'}
+
+    cards = search_resp.get('cards', [])
+    if not cards:
+        return {'success': False, 'card_id': None, 'card_name': None,
+                'loose_stats': None, 'grade_stats': {}, 'raw_items': [], 'error': f'No Card Hedge results for "{query}"'}
+
+    best     = cards[0]
+    card_id  = best.get('card_id', '')
+    card_name = best.get('description', best.get('player', ''))
+
+    # Parse grade prices from card-search response (strings like "850")
+    grade_stats  = {}
+    loose_stats  = None
+    for gp in best.get('prices', []):
+        label = (gp.get('grade') or '').strip()
+        price = gp.get('price')
+        stats = _ch_price_to_stats(price)
+        if label in ('Raw', 'Ungraded', ''):
+            loose_stats = stats
+        else:
+            # Map "PSA 9" → 9, "PSA 9.5" → 9.5, "PSA 10" → 10, etc.
+            m = re.search(r'(\d+(?:\.\d+)?)\s*$', label)
+            if m:
+                g = float(m.group(1))
+                if g == int(g):
+                    g = int(g)
+                grade_stats[g] = stats
+
+    # --- Step 2: comps for the predicted/default grades to get real sold records ---
+    raw_items = []
+    if card_id:
+        # Fetch comps for PSA 9 as the representative grade for sold items list
+        try:
+            comps_resp = _ch_post('/v1/cards/comps', {
+                'card_id':           card_id,
+                'count':             15,
+                'grade':             'PSA 9',
+                'include_raw_prices': True,
+            })
+            comp_price = comps_resp.get('comp_price')
+            comp_high  = comps_resp.get('high')
+            comp_low   = comps_resp.get('low')
+            count_used = comps_resp.get('count_used')
+
+            # Upgrade PSA 9 stats with real comp data (better than card-search price string)
+            if comp_price:
+                grade_stats[9] = _ch_price_to_stats(comp_price, count=count_used,
+                                                     low=comp_low, high=comp_high)
+
+            for sale in (comps_resp.get('raw_prices') or []):
+                try:
+                    raw_items.append({
+                        'title':     sale.get('title', ''),
+                        'price':     float(sale.get('price', 0)),
+                        'currency':  'USD',
+                        'sold_date': (sale.get('sale_date') or '')[:10],
+                        'url':       sale.get('sale_url', ''),
+                        'condition': sale.get('grade', 'PSA 9'),
+                    })
+                except Exception:
+                    continue
+        except Exception:
+            pass  # comps call is best-effort; card-search prices are the fallback
+
+    return {
+        'success':     True,
+        'card_id':     card_id,
+        'card_name':   card_name,
+        'loose_stats': loose_stats,
+        'grade_stats': grade_stats,
+        'raw_items':   raw_items,
+        'error':       None,
+    }
 
 
 def _scp_price_to_stats(pennies) -> dict:
@@ -212,6 +375,10 @@ def _compute_stats(prices: list) -> object:
         'low':    round(min(s), 2),
         'high':   round(max(s), 2),
     }
+
+
+def _get_ch_key() -> str:
+    return os.environ.get('CARD_HEDGE_API_KEY', '').strip()
 
 
 def _get_scp_key() -> str:
@@ -769,7 +936,26 @@ def find_deals(
     sold_comps = {}
     sold_comps_error = None
 
-    if _get_scp_key():
+    if _get_ch_key():
+        # ---- Card Hedge path: 2 calls, all grades, best quality ----
+        ch_cache_key = f'ch:bulk_graded:{query.lower().strip()}'
+        cached = _cache_get(ch_cache_key)
+        if cached:
+            sold_comps = cached
+        else:
+            ch = _search_card_hedge(query)
+            if ch['success']:
+                sold_comps['raw'] = ch['loose_stats']
+                for g in grade_levels:
+                    gk = int(g) if float(g) == int(g) else float(g)
+                    sold_comps[f'psa{int(g)}'] = ch['grade_stats'].get(gk)
+            else:
+                sold_comps_error = ch.get('error')
+                sold_comps['raw'] = None
+                for g in grade_levels:
+                    sold_comps[f'psa{int(g)}'] = None
+            _cache_set(ch_cache_key, sold_comps)
+    elif _get_scp_key():
         # ---- SCP path: 1 call returns all grades at once ----
         scp_cache_key = f'scp:bulk_graded:{query.lower().strip()}'
         cached = _cache_get(scp_cache_key)
@@ -892,7 +1078,7 @@ def find_deals(
 def get_comps(search_query: str, predicted_grade=None) -> dict:
     """
     Fetch both graded and raw (ungraded) comps for a card.
-    Uses SportsCardsPro when SPORTSCARDSPRO_API_KEY is set; falls back to eBay.
+    Priority: Card Hedge AI → SportsCardsPro → eBay Finding API.
 
     Returns:
         {
@@ -900,10 +1086,56 @@ def get_comps(search_query: str, predicted_grade=None) -> dict:
             raw_comps:       search result dict (stats + items),
             ebay_configured: bool,
             scp_configured:  bool,
+            ch_configured:   bool,
         }
     """
+    ch_configured   = bool(_get_ch_key())
     scp_configured  = bool(_get_scp_key())
     ebay_configured = bool(_get_app_id())
+
+    if ch_configured and search_query:
+        grade_str = str(int(predicted_grade)) if predicted_grade is not None else 'none'
+        cache_key = f'ch:comps:{search_query.lower().strip()}:{grade_str}'
+        cached = _cache_get(cache_key)
+        if cached:
+            return cached
+
+        ch = _search_card_hedge(search_query)
+        if ch['success']:
+            graded_stats = None
+            if predicted_grade is not None:
+                gk = int(predicted_grade) if float(predicted_grade) == int(predicted_grade) else float(predicted_grade)
+                graded_stats = ch['grade_stats'].get(gk)
+            graded_comps = {
+                'success': True,
+                'query':   f'{search_query} PSA {predicted_grade}' if predicted_grade else search_query,
+                'items':   ch['raw_items'],
+                'stats':   graded_stats,
+                'error':   None,
+                'source':  'cardhedge',
+            }
+            raw_comps = {
+                'success': True,
+                'query':   search_query,
+                'items':   [],
+                'stats':   ch['loose_stats'],
+                'error':   None,
+                'source':  'cardhedge',
+            }
+        else:
+            err = ch.get('error', 'Card Hedge lookup failed')
+            graded_comps = {'success': False, 'query': search_query, 'items': [], 'stats': None, 'error': err}
+            raw_comps    = {'success': False, 'query': search_query, 'items': [], 'stats': None, 'error': err}
+
+        result = {
+            'graded_comps':    graded_comps,
+            'raw_comps':       raw_comps,
+            'ebay_configured': ebay_configured,
+            'scp_configured':  scp_configured,
+            'ch_configured':   True,
+        }
+        _cache_set(cache_key, result)
+        return result
 
     if scp_configured and search_query:
         grade_str = str(int(predicted_grade)) if predicted_grade is not None else 'none'
@@ -944,6 +1176,7 @@ def get_comps(search_query: str, predicted_grade=None) -> dict:
             'raw_comps':       raw_comps,
             'ebay_configured': ebay_configured,
             'scp_configured':  True,
+            'ch_configured':   ch_configured,
         }
         _cache_set(cache_key, result)
         return result
@@ -963,4 +1196,5 @@ def get_comps(search_query: str, predicted_grade=None) -> dict:
         'raw_comps':       raw,
         'ebay_configured': ebay_configured,
         'scp_configured':  False,
+        'ch_configured':   False,
     }

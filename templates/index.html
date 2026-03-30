@@ -914,7 +914,6 @@
                             <select id="lotPsaGrade">
                                 <option value="">Select PSA Grade (Lot)</option>
                                 <option value="10">PSA 10</option>
-                                <option value="9.5">PSA 9.5</option>
                                 <option value="9">PSA 9</option>
                                 <option value="8.5">PSA 8.5</option>
                                 <option value="8">PSA 8</option>
@@ -952,7 +951,6 @@
                         <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
                             <strong style="font-size:0.9em; color:#4a5568;">Grades to fetch:</strong>
                             <label style="font-size:0.9em;"><input type="checkbox" class="ebay-grade-cb" value="10" checked> PSA 10</label>
-                            <label style="font-size:0.9em;"><input type="checkbox" class="ebay-grade-cb" value="9.5"> PSA 9.5</label>
                             <label style="font-size:0.9em;"><input type="checkbox" class="ebay-grade-cb" value="9" checked> PSA 9</label>
                             <label style="font-size:0.9em;"><input type="checkbox" class="ebay-grade-cb" value="8.5"> PSA 8.5</label>
                             <label style="font-size:0.9em;"><input type="checkbox" class="ebay-grade-cb" value="8" checked> PSA 8</label>
@@ -2074,7 +2072,7 @@
             .then(r => r.json())
             .then(data => {
               if (loading) loading.style.display = 'none';
-              if (!data.ebay_configured && !data.scp_configured) {
+              if (!data.ebay_configured && !data.scp_configured && !data.ch_configured) {
                 if (notConf) notConf.style.display = 'block';
                 return;
               }
