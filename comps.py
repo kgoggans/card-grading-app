@@ -1,11 +1,13 @@
 """
-Market Comparables via eBay APIs
+Market Comparables — SportsCardsPro (primary) + eBay APIs (fallback)
 
-- Price comps: eBay Finding API (findCompletedItems) — requires EBAY_APP_ID
-- Training image fetch: eBay Browse API — requires EBAY_APP_ID + EBAY_CLIENT_SECRET
-  Browse API has 5M calls/day vs 5K for Finding API.
+Priority:
+  1. SportsCardsPro API (1 call per card, all grades) — requires SPORTSCARDSPRO_API_KEY
+     Sign up at sportscardspro.com → Legendary (~$6/mo) → Subscription page → API/Download
+  2. eBay Finding API (findCompletedItems, 5K calls/day) — requires EBAY_APP_ID
+  3. eBay Browse API (active listings, 5M calls/day) — requires EBAY_APP_ID + EBAY_CLIENT_SECRET
 
-Get credentials at: https://developer.ebay.com/
+  export SPORTSCARDSPRO_API_KEY=your_40_char_token
   export EBAY_APP_ID=your_app_id
   export EBAY_CLIENT_SECRET=your_cert_id
 """
@@ -21,9 +23,20 @@ from urllib.error import URLError, HTTPError
 from datetime import datetime, timezone
 
 
-_FINDING_API = 'https://svcs.ebay.com/services/search/FindingService/v1'
+_FINDING_API  = 'https://svcs.ebay.com/services/search/FindingService/v1'
 _BROWSE_API   = 'https://api.ebay.com/buy/browse/v1/item_summary/search'
 _OAUTH_URL    = 'https://api.ebay.com/identity/v1/oauth2/token'
+_SCP_BASE_URL = 'https://www.sportscardspro.com/api'
+
+# Candidate field names per grade — tried in order, first non-zero value wins.
+# Confirmed against live API; defensive list handles any future field renames.
+_SCP_GRADE_FIELDS: dict = {
+    7:   ['grade-7-price',   'psa-7-price',   'grade7price'],
+    8:   ['grade-8-price',   'psa-8-price',   'grade8price'],
+    9:   ['grade-9-price',   'psa-9-price',   'grade9price'],
+    9.5: ['grade-9.5-price', 'psa-9.5-price', 'grade95price'],
+    10:  ['psa-10-price',    'grade-10-price', 'grade10price'],
+}
 
 # Cached OAuth token {access_token, expires_at}
 _oauth_cache: dict = {}
@@ -65,6 +78,127 @@ def _parse_psa_grade_from_title(title: str) -> object:
     return None
 
 
+def _scp_price_to_stats(pennies) -> dict:
+    """Convert a SportsCardsPro penny-integer price to a stats-compatible dict.
+    Only median is populated — that's all downstream callers read."""
+    if not pennies:
+        return None
+    try:
+        dollars = int(pennies) / 100.0
+    except (TypeError, ValueError):
+        return None
+    if dollars <= 0:
+        return None
+    return {'count': None, 'median': round(dollars, 2), 'mean': None, 'low': None, 'high': None}
+
+
+def _scp_error_result(error_msg: str) -> dict:
+    return {
+        'success': False, 'product_id': None, 'product_name': None,
+        'loose_stats': None,
+        'grade_stats': {g: None for g in _SCP_GRADE_FIELDS},
+        'raw_product': {}, 'error': error_msg,
+    }
+
+
+def _search_sportscardspro(query: str, timeout: int = 10) -> dict:
+    """
+    Look up a card on SportsCardsPro and return per-grade price stats.
+
+    Makes two HTTP calls (both count toward no known rate limit):
+      1. GET /api/products?q={query}  — find the best-matching product ID
+      2. GET /api/product?id={id}     — fetch grade prices for that product
+
+    Returns:
+        {
+            success:      bool,
+            product_id:   str | None,
+            product_name: str | None,
+            loose_stats:  stats_dict | None,   # ungraded/raw price
+            grade_stats:  {7: stats|None, 8: ..., 9: ..., 9.5: ..., 10: ...},
+            raw_product:  dict,                # full product JSON for debugging
+            error:        str | None,
+        }
+    Never raises — all errors captured in 'error' key.
+    """
+    key = _get_scp_key()
+    if not key:
+        return _scp_error_result('SPORTSCARDSPRO_API_KEY not set')
+
+    # --- Call 1: search ---
+    search_url = f'{_SCP_BASE_URL}/products?' + urllib.parse.urlencode({'q': query.strip(), 'api_key': key})
+    try:
+        req = Request(search_url, headers={'User-Agent': 'CardGradingApp/2.0'})
+        with urlopen(req, timeout=timeout) as resp:
+            search_data = json.loads(resp.read().decode('utf-8'))
+    except HTTPError as exc:
+        body = ''
+        try:
+            body = exc.read().decode('utf-8', errors='ignore')
+        except Exception:
+            pass
+        return _scp_error_result(f'SCP search HTTP {exc.code}: {body[:200]}')
+    except Exception as exc:
+        return _scp_error_result(f'SCP search error: {exc}')
+
+    products = search_data if isinstance(search_data, list) else search_data.get('products', [])
+    if not products:
+        return _scp_error_result(f'No SportsCardsPro results for "{query}"')
+
+    best       = products[0]
+    product_id = str(best.get('id', '')).strip()
+    if not product_id:
+        return _scp_error_result('SCP: first product has no id field')
+
+    # --- Call 2: fetch product details ---
+    product_url = f'{_SCP_BASE_URL}/product?' + urllib.parse.urlencode({'id': product_id, 'api_key': key})
+    try:
+        req = Request(product_url, headers={'User-Agent': 'CardGradingApp/2.0'})
+        with urlopen(req, timeout=timeout) as resp:
+            product_data = json.loads(resp.read().decode('utf-8'))
+    except HTTPError as exc:
+        body = ''
+        try:
+            body = exc.read().decode('utf-8', errors='ignore')
+        except Exception:
+            pass
+        return _scp_error_result(f'SCP product HTTP {exc.code}: {body[:200]}')
+    except Exception as exc:
+        return _scp_error_result(f'SCP product error: {exc}')
+
+    if isinstance(product_data, dict) and 'product' in product_data:
+        product_data = product_data['product']
+
+    # --- Parse grade prices defensively ---
+    grade_stats = {}
+    for grade, field_candidates in _SCP_GRADE_FIELDS.items():
+        pennies = None
+        for field in field_candidates:
+            val = product_data.get(field)
+            if val is not None and val != '' and val != 0:
+                pennies = val
+                break
+        grade_stats[grade] = _scp_price_to_stats(pennies)
+
+    # --- Parse loose (ungraded) price ---
+    loose_pennies = None
+    for field in ('loose-price', 'loose_price', 'ungraded-price'):
+        val = product_data.get(field)
+        if val is not None and val != '' and val != 0:
+            loose_pennies = val
+            break
+
+    return {
+        'success':      True,
+        'product_id':   product_id,
+        'product_name': product_data.get('name') or best.get('name', ''),
+        'loose_stats':  _scp_price_to_stats(loose_pennies),
+        'grade_stats':  grade_stats,
+        'raw_product':  product_data,
+        'error':        None,
+    }
+
+
 def _compute_stats(prices: list) -> object:
     if not prices:
         return None
@@ -78,6 +212,10 @@ def _compute_stats(prices: list) -> object:
         'low':    round(min(s), 2),
         'high':   round(max(s), 2),
     }
+
+
+def _get_scp_key() -> str:
+    return os.environ.get('SPORTSCARDSPRO_API_KEY', '').strip()
 
 
 def _get_app_id() -> str:
@@ -162,6 +300,20 @@ def _call_finding_api(operation: str, params: dict, timeout: int = 10) -> dict:
         raise HTTPError(exc.url, exc.code, f'{exc.reason} | {body[:300]}', exc.headers, None) from None
 
 
+def _check_finding_error(data: dict, operation: str) -> None:
+    """Raise ValueError if the eBay Finding API JSON body contains an error."""
+    key = f"{operation}Response"
+    resp = data.get(key, [{}])[0]
+    ack = resp.get("ack", ["Success"])[0]
+    if ack in ("Failure", "PartialFailure"):
+        msgs = []
+        for err in resp.get("errorMessage", [{}])[0].get("error", []):
+            msg = err.get("message", ["Unknown eBay error"])[0]
+            eid = err.get("errorId", [""])[0]
+            msgs.append(f"{msg} (code {eid})" if eid else msg)
+        raise ValueError("; ".join(msgs) or "eBay Finding API returned failure")
+
+
 def _parse_finding_response(data: dict, operation: str) -> list:
     """Extract item list from a findCompletedItems / findItemsAdvanced response."""
     key = f'{operation}Response'
@@ -218,7 +370,7 @@ def search_sold_listings(query: str, psa_grade=None, max_results: int = 12) -> d
     if psa_grade is not None:
         full_query = f'{full_query} PSA {psa_grade}'
 
-    cache_key = f'sold:{full_query.lower()}:{max_results}'
+    cache_key = f'ebay:sold:{full_query.lower()}:{max_results}'
     cached = _cache_get(cache_key)
     if cached:
         return cached
@@ -249,6 +401,11 @@ def search_sold_listings(query: str, psa_grade=None, max_results: int = 12) -> d
         return {'success': False, 'query': full_query, 'items': [], 'stats': None,
                 'error': f'Unexpected error: {exc}'}
 
+    try:
+        _check_finding_error(data, 'findCompletedItems')
+    except ValueError as exc:
+        return {'success': False, 'query': full_query, 'items': [], 'stats': None,
+                'error': str(exc)}
     items = _parse_finding_response(data, 'findCompletedItems')
     stats = _compute_stats([i['price'] for i in items])
     result = {'success': True, 'query': full_query, 'items': items, 'stats': stats, 'error': None}
@@ -527,7 +684,7 @@ def _fetch_graded_comps_bulk(query: str, grades: list) -> dict:
 
     Returns {grade_int: stats_dict | None, ...}  e.g. {7: {...}, 8: {...}, 9: {...}, 10: {...}}
     """
-    cache_key = f'bulk_graded:{query.lower().strip()}'
+    cache_key = f'ebay:bulk_graded:{query.lower().strip()}'
     cached = _cache_get(cache_key)
     if cached:
         return cached
@@ -543,6 +700,7 @@ def _fetch_graded_comps_bulk(query: str, grades: list) -> dict:
 
     try:
         data = _call_finding_api('findCompletedItems', params)
+        _check_finding_error(data, 'findCompletedItems')
     except Exception as exc:
         empty = {int(g): None for g in grades}
         empty['_error'] = str(exc)
@@ -607,21 +765,40 @@ def find_deals(
     if not active['items']:
         return {'success': True, 'query': query, 'deals': [], 'sold_comps': {}, 'error': 'No active listings found'}
 
-    # ---- Fetch sold comps: 2 API calls total (was 5), both cached 6 hrs ----
-    # Call 1: raw (ungraded) sold comps
-    # Call 2: one broad "PSA {card}" query, bucket results by grade from title
     grade_levels = [7, 8, 9, 10] if psa_grade_estimate is None else [int(psa_grade_estimate)]
     sold_comps = {}
+    sold_comps_error = None
 
-    raw_result = search_sold_listings(query, max_results=20)
-    sold_comps['raw'] = raw_result.get('stats')
-    sold_comps_error = raw_result.get('error')  # captures rate limit / API errors
+    if _get_scp_key():
+        # ---- SCP path: 1 call returns all grades at once ----
+        scp_cache_key = f'scp:bulk_graded:{query.lower().strip()}'
+        cached = _cache_get(scp_cache_key)
+        if cached:
+            sold_comps = cached
+        else:
+            scp = _search_sportscardspro(query)
+            if scp['success']:
+                sold_comps['raw'] = scp['loose_stats']
+                for g in grade_levels:
+                    gk = int(g) if float(g) == int(g) else float(g)
+                    sold_comps[f'psa{int(g)}'] = scp['grade_stats'].get(gk)
+            else:
+                sold_comps_error = scp.get('error')
+                sold_comps['raw'] = None
+                for g in grade_levels:
+                    sold_comps[f'psa{int(g)}'] = None
+            _cache_set(scp_cache_key, sold_comps)
+    else:
+        # ---- eBay fallback: 2 Finding API calls, both cached 6 hrs ----
+        raw_result = search_sold_listings(query, max_results=20)
+        sold_comps['raw'] = raw_result.get('stats')
+        sold_comps_error = raw_result.get('error')
 
-    graded_bulk = _fetch_graded_comps_bulk(query, grade_levels)
-    if graded_bulk.get('_error') and not sold_comps_error:
-        sold_comps_error = graded_bulk['_error']
-    for g in grade_levels:
-        sold_comps[f'psa{int(g)}'] = graded_bulk.get(int(g))
+        graded_bulk = _fetch_graded_comps_bulk(query, grade_levels)
+        if graded_bulk.get('_error') and not sold_comps_error:
+            sold_comps_error = graded_bulk['_error']
+        for g in grade_levels:
+            sold_comps[f'psa{int(g)}'] = graded_bulk.get(int(g))
 
     raw_median = sold_comps['raw']['median'] if sold_comps.get('raw') else None
 
@@ -715,27 +892,75 @@ def find_deals(
 def get_comps(search_query: str, predicted_grade=None) -> dict:
     """
     Fetch both graded and raw (ungraded) comps for a card.
+    Uses SportsCardsPro when SPORTSCARDSPRO_API_KEY is set; falls back to eBay.
 
     Returns:
         {
-            graded_comps: search result dict (with PSA grade appended),
-            raw_comps:    search result dict (without grade),
-            ebay_configured: bool
+            graded_comps:    search result dict (stats + items),
+            raw_comps:       search result dict (stats + items),
+            ebay_configured: bool,
+            scp_configured:  bool,
         }
     """
-    configured = bool(_get_app_id())
+    scp_configured  = bool(_get_scp_key())
+    ebay_configured = bool(_get_app_id())
 
+    if scp_configured and search_query:
+        grade_str = str(int(predicted_grade)) if predicted_grade is not None else 'none'
+        cache_key = f'scp:comps:{search_query.lower().strip()}:{grade_str}'
+        cached = _cache_get(cache_key)
+        if cached:
+            return cached
+
+        scp = _search_sportscardspro(search_query)
+        if scp['success']:
+            graded_stats = None
+            if predicted_grade is not None:
+                gk = int(predicted_grade) if float(predicted_grade) == int(predicted_grade) else float(predicted_grade)
+                graded_stats = scp['grade_stats'].get(gk)
+            graded_comps = {
+                'success': True,
+                'query':   f'{search_query} PSA {predicted_grade}' if predicted_grade else search_query,
+                'items':   [],
+                'stats':   graded_stats,
+                'error':   None,
+                'source':  'sportscardspro',
+            }
+            raw_comps = {
+                'success': True,
+                'query':   search_query,
+                'items':   [],
+                'stats':   scp['loose_stats'],
+                'error':   None,
+                'source':  'sportscardspro',
+            }
+        else:
+            err = scp.get('error', 'SportsCardsPro lookup failed')
+            graded_comps = {'success': False, 'query': search_query, 'items': [], 'stats': None, 'error': err}
+            raw_comps    = {'success': False, 'query': search_query, 'items': [], 'stats': None, 'error': err}
+
+        result = {
+            'graded_comps':    graded_comps,
+            'raw_comps':       raw_comps,
+            'ebay_configured': ebay_configured,
+            'scp_configured':  True,
+        }
+        _cache_set(cache_key, result)
+        return result
+
+    # ---- eBay fallback ----
     graded = None
     if predicted_grade is not None and search_query:
         graded = search_sold_listings(search_query, psa_grade=predicted_grade)
 
     raw = search_sold_listings(search_query) if search_query else {
         'success': False, 'query': search_query,
-        'items': [], 'stats': None, 'error': 'No search query'
+        'items': [], 'stats': None, 'error': 'No search query',
     }
 
     return {
         'graded_comps':    graded,
         'raw_comps':       raw,
-        'ebay_configured': configured,
+        'ebay_configured': ebay_configured,
+        'scp_configured':  False,
     }
