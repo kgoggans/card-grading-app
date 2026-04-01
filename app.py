@@ -11,8 +11,23 @@ import socket
 import time
 import os
 
-# Set EBAY_APP_ID and EBAY_CLIENT_SECRET as environment variables before running.
-# Example: export EBAY_APP_ID=your_app_id && export EBAY_CLIENT_SECRET=your_cert_id
+# Load credentials from .env file so no manual exports are needed
+def _load_dotenv():
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    if not os.path.exists(env_path):
+        return
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, _, val = line.partition('=')
+                k, v = key.strip(), val.strip()
+                if v:  # always apply non-empty values from .env
+                    os.environ[k] = v
+                else:
+                    os.environ.setdefault(k, v)
+
+_load_dotenv()
 
 from flask import Flask, render_template, request, jsonify, url_for
 from werkzeug.utils import secure_filename
@@ -68,7 +83,7 @@ _PSA_DESCRIPTORS = {
 }
 
 _VALID_PSA_GRADES = {1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5,
-                    6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10}
+                    6, 6.5, 7, 7.5, 8, 8.5, 9, 10}
 
 
 def _preprocess_variants(region):
@@ -349,7 +364,7 @@ def summarize_training_dataset(rows):
 # (midpoint of each grade band per PSAGradingCriteria.GRADE_RANGES)
 # ---------------------------------------------------------------------------
 _PSA_GRADE_TO_TARGET = {
-    10.0: 970, 9.5: 940, 9.0: 925, 8.5: 875, 8.0: 825,
+    10.0: 970, 9.0: 925, 8.5: 875, 8.0: 825,
     7.5: 775, 7.0: 725, 6.5: 675, 6.0: 625, 5.5: 575,
     5.0: 525, 4.5: 475, 4.0: 425, 3.5: 375, 3.0: 325,
     2.5: 275, 2.0: 225, 1.5: 175, 1.0: 125
@@ -671,6 +686,17 @@ def split_image_grid(image, rows, cols):
 def detect_card_boxes_auto(image):
     """Auto-detect likely card bounding boxes in a lot image."""
     height, width = image.shape[:2]
+
+    # Downscale to max 2000px for speed; scale boxes back up afterward
+    MAX_DIM = 2000
+    scale = 1.0
+    if max(height, width) > MAX_DIM:
+        scale = MAX_DIM / max(height, width)
+        new_w = int(width * scale)
+        new_h = int(height * scale)
+        image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        height, width = new_h, new_w
+
     image_area = float(height * width)
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -758,6 +784,13 @@ def detect_card_boxes_auto(image):
     for row in rows:
         for box in sorted(row['boxes'], key=lambda item: item[0]):
             ordered.append(box)
+
+    # Scale boxes back to original image coordinates
+    if scale != 1.0:
+        ordered = [
+            (int(x / scale), int(y / scale), int(w / scale), int(h / scale), area)
+            for x, y, w, h, area in ordered
+        ]
 
     return ordered
 
@@ -873,7 +906,7 @@ def grade_card():
                 rule_score = grading_result['score']
 
                 _grade_to_score = {
-                    10.0: 970, 9.5: 940, 9.0: 925, 8.5: 875, 8.0: 825,
+                    10.0: 970, 9.0: 925, 8.5: 875, 8.0: 825,
                     7.5: 775, 7.0: 725, 6.5: 675, 6.0: 625, 5.5: 575,
                     5.0: 525, 4.5: 475, 4.0: 425, 3.5: 375, 3.0: 325,
                     2.5: 275, 2.0: 225, 1.5: 175, 1.0: 125
@@ -1375,24 +1408,49 @@ def dataset_stats():
 
 
 # ---------------------------------------------------------------------------
-# ML model training route
+# Feature cache — avoids re-running CV analysis on unchanged images
 # ---------------------------------------------------------------------------
 
-@app.route('/train-model', methods=['POST'])
-@require_admin
-@_rate_limit("2 per minute")
-def train_model_route():
-    """
-    Re-grade all labeled training samples and train the GradientBoosting ML model.
-    Also runs the legacy scipy linear calibration for backward compatibility.
-    """
-    rows = read_training_rows()
-    if not rows:
-        return jsonify({'success': False, 'error': 'No training samples found.'}), 400
+def _feature_cache_path():
+    return os.path.join(app.config['TRAINING_FOLDER'], 'feature_cache.json')
 
+
+def _load_feature_cache():
+    path = _feature_cache_path()
+    if os.path.exists(path):
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_feature_cache(cache):
+    try:
+        with open(_feature_cache_path(), 'w') as f:
+            json.dump(cache, f)
+    except Exception:
+        pass
+
+
+def _image_mtime(path):
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return 0
+
+
+def build_training_samples(rows, training_images_folder):
+    """
+    Build (front_scores, back_scores, psa_grade) tuples for all valid rows.
+    Uses a disk cache keyed by sample_id + image mtimes so unchanged images
+    are never re-analyzed.
+    """
     grader = CardGrader()
-    samples = []
-    skipped = []
+    cache  = _load_feature_cache()
+    samples, skipped = [], []
+    cache_dirty = False
 
     for row in rows:
         sample_id = row.get('sample_id', '?')
@@ -1402,19 +1460,54 @@ def train_model_route():
             skipped.append(f"{sample_id}: invalid grade")
             continue
 
-        front_img = os.path.join(app.config['TRAINING_IMAGES_FOLDER'], row.get('front_image', ''))
-        back_img  = os.path.join(app.config['TRAINING_IMAGES_FOLDER'], row.get('back_image', ''))
+        front_img = os.path.join(training_images_folder, row.get('front_image', ''))
+        back_img  = os.path.join(training_images_folder, row.get('back_image', ''))
         if not os.path.exists(front_img) or not os.path.exists(back_img):
             skipped.append(f"{sample_id}: image files missing")
+            continue
+
+        # Cache key includes file mtimes so any image change triggers re-analysis
+        cache_key = f"{sample_id}|{_image_mtime(front_img):.0f}|{_image_mtime(back_img):.0f}"
+        if cache_key in cache:
+            entry  = cache[cache_key]
+            weight = 1.0 if 'ebay' in (row.get('notes') or '').lower() else 5.0
+            samples.append((entry['front_scores'], entry['back_scores'], psa_grade, weight))
             continue
 
         try:
             front_analysis, back_analysis = analyze_card_images(front_img, back_img)
             front_scores = grader._analyze_side(front_analysis, 'front')
             back_scores  = grader._analyze_side(back_analysis,  'back')
-            samples.append((front_scores, back_scores, psa_grade))
+            cache[cache_key] = {'front_scores': front_scores, 'back_scores': back_scores}
+            cache_dirty = True
+            weight = 1.0 if 'ebay' in (row.get('notes') or '').lower() else 5.0
+            samples.append((front_scores, back_scores, psa_grade, weight))
         except Exception as exc:
             skipped.append(f"{sample_id}: {exc}")
+
+    if cache_dirty:
+        _save_feature_cache(cache)
+
+    return samples, skipped
+
+
+# ---------------------------------------------------------------------------
+# ML model training route
+# ---------------------------------------------------------------------------
+
+@app.route('/train-model', methods=['POST'])
+@require_admin
+@_rate_limit("2 per minute")
+def train_model_route():
+    """
+    Re-grade all labeled training samples and train the GradientBoosting ML model.
+    Uses cached CV features so only new/changed images are re-analyzed.
+    """
+    rows = read_training_rows()
+    if not rows:
+        return jsonify({'success': False, 'error': 'No training samples found.'}), 400
+
+    samples, skipped = build_training_samples(rows, app.config['TRAINING_IMAGES_FOLDER'])
 
     ml_model = reload_model()
     try:
@@ -1446,129 +1539,127 @@ def model_status_route():
 
 
 # ---------------------------------------------------------------------------
-# eBay bulk training route
+# eBay bulk training — background job with progress polling
 # ---------------------------------------------------------------------------
 
-@app.route('/bulk-train-from-ebay', methods=['POST'])
-@require_admin
-@_rate_limit("2 per minute")
-def bulk_train_from_ebay():
-    """
-    Fetch completed eBay PSA-graded card listings, extract card images from slabs,
-    and save as labeled training samples. Automatically retrains the ML model after.
+import threading
+_ebay_jobs: dict = {}  # job_id -> progress dict
 
-    Body (JSON):
-        search_query   str   e.g. "Michael Jordan Topps"
-        grades         list  e.g. [8, 9, 10]
-        max_per_grade  int   1-25 (default 10)
-    """
+
+def _run_ebay_bulk_job(job_id, search_query, grades, max_per_grade, upload_folder, training_folder):
+    """Background thread: fetch eBay images, save samples, retrain model."""
     from image_analysis import CardImageAnalyzer
     from comps import fetch_training_candidates
 
-    body          = request.get_json(force=True, silent=True) or {}
-    search_query  = body.get('search_query', '').strip()
-    grades_raw    = body.get('grades', [10])
-    max_per_grade = int(body.get('max_per_grade', 10))
-
-    if not search_query:
-        return jsonify({'success': False, 'error': 'search_query is required'}), 400
-
-    max_per_grade = max(1, min(max_per_grade, 25))
-
-    grades = []
-    for g in grades_raw:
-        try:
-            gf = float(g)
-            if gf in _VALID_PSA_GRADES:
-                grades.append(gf)
-        except (TypeError, ValueError):
-            pass
-    if not grades:
-        return jsonify({'success': False, 'error': 'No valid PSA grades specified'}), 400
-
+    job = _ebay_jobs[job_id]
     analyzer = CardImageAnalyzer()
-    saved, skipped = [], []
+    saved, skipped, api_errors = [], [], []
 
-    api_errors = []
+    # Step 1: fetch all candidates first (fast API calls)
+    all_candidates = []
     for grade in grades:
+        if job.get('cancelled'):
+            break
         candidates, api_err = fetch_training_candidates(search_query, grade, max_per_grade)
         if api_err:
             api_errors.append(f'PSA {grade}: {api_err}')
-            continue
-        for candidate in candidates:
-            image_url = candidate['image_url']
-            title     = candidate['title']
-            tmp_path  = None
-            try:
-                ts = datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')
-                _fn, tmp_path = resolve_image_input(
-                    uploaded_file=None,
-                    image_url=image_url,
-                    output_dir=app.config['UPLOAD_FOLDER'],
-                    output_prefix=f"ebay_{ts}"
-                )
+        else:
+            all_candidates.extend(candidates)
 
-                img = cv2.imread(tmp_path)
-                if img is None:
-                    skipped.append({'title': title, 'grade': grade, 'reason': 'Could not load image'})
-                    continue
+    if api_errors and not all_candidates:
+        job.update({'status': 'error', 'error': api_errors[0], 'done': True})
+        return
 
-                # Try slab extraction; fall back to full image
+    job['total'] = len(all_candidates)
+    job['status'] = 'downloading'
+
+    # Step 2: download and save each image
+    for i, candidate in enumerate(all_candidates):
+        if job.get('cancelled'):
+            break
+        job['current'] = i + 1
+        front_url = candidate['image_url']
+        back_url  = candidate.get('back_url', '')
+        title     = candidate['title']
+        grade     = candidate['grade']
+        tmp_front = tmp_back = None
+        try:
+            ts = datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')
+
+            _fn, tmp_front = resolve_image_input(
+                uploaded_file=None, image_url=front_url,
+                output_dir=upload_folder, output_prefix=f"ebay_{ts}_f"
+            )
+            front_img = cv2.imread(tmp_front)
+            if front_img is None:
+                skipped.append({'title': title, 'grade': grade, 'reason': 'Could not load front image'})
+                continue
+
+            # Download back image if available, otherwise duplicate front
+            if back_url:
                 try:
-                    card_img = analyzer.extract_card_from_slab(img)['card_image']
+                    _fn2, tmp_back = resolve_image_input(
+                        uploaded_file=None, image_url=back_url,
+                        output_dir=upload_folder, output_prefix=f"ebay_{ts}_b"
+                    )
+                    back_img = cv2.imread(tmp_back) or front_img
                 except Exception:
-                    card_img = img
+                    back_img = front_img
+            else:
+                back_img = front_img
 
-                h, w = card_img.shape[:2]
-                if min(h, w) < 50:
-                    skipped.append({'title': title, 'grade': grade, 'reason': f'Too small ({w}x{h})'})
-                    continue
+            # Extract card from slab for both sides
+            try:
+                front_card = analyzer.extract_card_from_slab(front_img)['card_image']
+            except Exception:
+                front_card = front_img
+            try:
+                back_card = analyzer.extract_card_from_slab(back_img)['card_image']
+            except Exception:
+                back_card = back_img
 
-                sample_id = f"sample_{ts}_ebay"
-                front_fn  = f"{sample_id}_front.jpg"
-                back_fn   = f"{sample_id}_back.jpg"
-                cv2.imwrite(os.path.join(app.config['TRAINING_IMAGES_FOLDER'], front_fn), card_img)
-                cv2.imwrite(os.path.join(app.config['TRAINING_IMAGES_FOLDER'], back_fn),  card_img)
+            # Minimum resolution filter — skip tiny images
+            MIN_DIM = 200
+            fh, fw = front_card.shape[:2]
+            bh, bw = back_card.shape[:2]
+            if min(fh, fw) < MIN_DIM or min(bh, bw) < MIN_DIM:
+                skipped.append({'title': title, 'grade': grade,
+                                'reason': f'Too small (front {fw}x{fh}, back {bw}x{bh})'})
+                continue
 
-                append_training_record(
-                    sample_id=sample_id,
-                    grade_value=grade,
-                    card_title=title[:100],
-                    notes=f'eBay auto-import. Query: {search_query}',
-                    front_filename=front_fn,
-                    back_filename=back_fn,
-                )
-                saved.append({'title': title, 'grade': grade})
-
-            except Exception as exc:
-                skipped.append({'title': title, 'grade': grade, 'reason': str(exc)})
-            finally:
-                if tmp_path and os.path.exists(tmp_path):
+            sample_id = f"sample_{ts}_ebay"
+            front_fn  = f"{sample_id}_front.jpg"
+            back_fn   = f"{sample_id}_back.jpg"
+            cv2.imwrite(os.path.join(training_folder, front_fn), front_card)
+            cv2.imwrite(os.path.join(training_folder, back_fn),  back_card)
+            append_training_record(
+                sample_id=sample_id,
+                grade_value=grade,
+                card_title=title[:100],
+                notes=f'eBay auto-import. Query: {search_query}',
+                front_filename=front_fn,
+                back_filename=back_fn,
+            )
+            saved.append({'title': title, 'grade': grade})
+        except Exception as exc:
+            skipped.append({'title': title, 'grade': grade, 'reason': str(exc)})
+        finally:
+            for p in (tmp_front, tmp_back):
+                if p and os.path.exists(p):
                     try:
-                        os.remove(tmp_path)
+                        os.remove(p)
                     except OSError:
                         pass
+        job['saved'] = len(saved)
+        job['skipped'] = len(skipped)
 
-    # Auto-retrain if new samples were saved
+    # Step 3: retrain model
     retrain_result = None
     if saved:
+        job['status'] = 'training'
         try:
-            rows    = read_training_rows()
-            grader  = CardGrader()
-            samples = []
-            for row in rows:
-                try:
-                    psa_grade = float(row.get('psa_grade') or 0)
-                    front_img = os.path.join(app.config['TRAINING_IMAGES_FOLDER'], row.get('front_image', ''))
-                    back_img  = os.path.join(app.config['TRAINING_IMAGES_FOLDER'], row.get('back_image', ''))
-                    if not os.path.exists(front_img) or not os.path.exists(back_img):
-                        continue
-                    fa, ba = analyze_card_images(front_img, back_img)
-                    fs = grader._analyze_side(fa, 'front')
-                    bs = grader._analyze_side(ba, 'back')
-                    samples.append((fs, bs, psa_grade))
-                except Exception:
-                    continue
+            rows = read_training_rows()
+            samples, _ = build_training_samples(rows, training_folder)
             ml = reload_model()
             if len(samples) >= 10:
                 meta = ml.train(samples)
@@ -1582,25 +1673,386 @@ def bulk_train_from_ebay():
 
     rows    = read_training_rows()
     summary = summarize_training_dataset(rows)
-
-    # Surface API errors if nothing was saved at all
-    if not saved and api_errors:
-        return jsonify({
-            'success': False,
-            'error':   api_errors[0],
-            'saved':   0, 'skipped': 0,
-        }), 503
-
-    return jsonify({
-        'success':       True,
-        'saved':         len(saved),
-        'skipped':       len(skipped),
-        'api_errors':    api_errors,
-        'saved_items':   saved[:30],
-        'skipped_items': skipped[:30],
-        'retrain':       retrain_result,
-        'dataset':       summary,
+    job.update({
+        'status':      'done',
+        'done':        True,
+        'saved':       len(saved),
+        'skipped':     len(skipped),
+        'saved_items': saved[:30],
+        'api_errors':  api_errors,
+        'retrain':     retrain_result,
+        'dataset':     summary,
     })
+
+
+@app.route('/bulk-train-from-ebay', methods=['POST'])
+@require_admin
+def bulk_train_from_ebay():
+    """Start a background eBay bulk training job. Returns job_id immediately."""
+    body          = request.get_json(force=True, silent=True) or {}
+    search_query  = body.get('search_query', '').strip()
+    grades_raw    = body.get('grades', [10])
+    max_per_grade = int(body.get('max_per_grade', 10))
+
+    if not search_query:
+        return jsonify({'success': False, 'error': 'search_query is required'}), 400
+
+    max_per_grade = max(1, min(max_per_grade, 200))
+
+    grades = []
+    for g in grades_raw:
+        try:
+            gf = float(g)
+            if gf in _VALID_PSA_GRADES:
+                grades.append(gf)
+        except (TypeError, ValueError):
+            pass
+    if not grades:
+        return jsonify({'success': False, 'error': 'No valid PSA grades specified'}), 400
+
+    job_id = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
+    _ebay_jobs[job_id] = {
+        'status': 'starting', 'done': False,
+        'total': 0, 'current': 0, 'saved': 0, 'skipped': 0,
+    }
+
+    t = threading.Thread(
+        target=_run_ebay_bulk_job,
+        args=(job_id, search_query, grades, max_per_grade,
+              app.config['UPLOAD_FOLDER'], app.config['TRAINING_IMAGES_FOLDER']),
+        daemon=True,
+    )
+    t.start()
+
+    return jsonify({'success': True, 'job_id': job_id})
+
+
+@app.route('/bulk-train-status/<job_id>', methods=['GET'])
+def bulk_train_status(job_id):
+    """Poll progress of a bulk eBay training job."""
+    job = _ebay_jobs.get(job_id)
+    if not job:
+        return jsonify({'success': False, 'error': 'Job not found'}), 404
+    return jsonify({'success': True, **job})
+
+
+# ---------------------------------------------------------------------------
+# PWCC / Goldin auction bulk training
+# ---------------------------------------------------------------------------
+
+_auction_jobs: dict = {}  # job_id -> progress dict
+
+
+def _run_auction_bulk_job(job_id, search_query, grades, max_per_grade,
+                          sources, upload_folder, training_folder):
+    """Background thread: fetch PWCC/Goldin images, save samples, retrain model."""
+    from image_analysis import CardImageAnalyzer
+    from auction_fetcher import fetch_auction_candidates
+
+    job = _auction_jobs[job_id]
+    analyzer = CardImageAnalyzer()
+    saved, skipped, api_errors = [], [], []
+
+    # Step 1: fetch candidates from auction houses
+    all_candidates = []
+    for grade in grades:
+        if job.get('cancelled'):
+            break
+        cands, errs = fetch_auction_candidates(
+            search_query, grade, max_per_grade, sources=sources
+        )
+        api_errors.extend(errs)
+        all_candidates.extend(cands)
+
+    if api_errors and not all_candidates:
+        job.update({'status': 'error', 'error': ' | '.join(api_errors), 'done': True})
+        return
+
+    job['total'] = len(all_candidates)
+    job['status'] = 'downloading'
+
+    # Step 2: download and save
+    for i, candidate in enumerate(all_candidates):
+        if job.get('cancelled'):
+            break
+        job['current'] = i + 1
+        front_url = candidate['front_url']
+        back_url  = candidate.get('back_url', '')
+        title     = candidate['title']
+        grade     = candidate['grade']
+        source    = candidate.get('source', 'auction')
+        tmp_front = tmp_back = None
+        try:
+            ts = datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')
+
+            _fn, tmp_front = resolve_image_input(
+                uploaded_file=None, image_url=front_url,
+                output_dir=upload_folder, output_prefix=f"auction_{ts}_f"
+            )
+            front_img = cv2.imread(tmp_front)
+            if front_img is None:
+                skipped.append({'title': title, 'grade': grade, 'reason': 'Could not load front image'})
+                continue
+
+            if back_url:
+                try:
+                    _fn2, tmp_back = resolve_image_input(
+                        uploaded_file=None, image_url=back_url,
+                        output_dir=upload_folder, output_prefix=f"auction_{ts}_b"
+                    )
+                    back_img = cv2.imread(tmp_back) or front_img
+                except Exception:
+                    back_img = front_img
+            else:
+                back_img = front_img
+
+            try:
+                front_card = analyzer.extract_card_from_slab(front_img)['card_image']
+            except Exception:
+                front_card = front_img
+            try:
+                back_card = analyzer.extract_card_from_slab(back_img)['card_image']
+            except Exception:
+                back_card = back_img
+
+            MIN_DIM = 200
+            fh, fw = front_card.shape[:2]
+            bh, bw = back_card.shape[:2]
+            if min(fh, fw) < MIN_DIM or min(bh, bw) < MIN_DIM:
+                skipped.append({'title': title, 'grade': grade,
+                                'reason': f'Too small ({fw}x{fh})'})
+                continue
+
+            sample_id = f"sample_{ts}_{source.lower()}"
+            front_fn  = f"{sample_id}_front.jpg"
+            back_fn   = f"{sample_id}_back.jpg"
+            cv2.imwrite(os.path.join(training_folder, front_fn), front_card)
+            cv2.imwrite(os.path.join(training_folder, back_fn),  back_card)
+            append_training_record(
+                sample_id=sample_id,
+                grade_value=grade,
+                card_title=title[:100],
+                notes=f'{source} auto-import. Query: {search_query}',
+                front_filename=front_fn,
+                back_filename=back_fn,
+            )
+            saved.append({'title': title, 'grade': grade, 'source': source})
+        except Exception as exc:
+            skipped.append({'title': title, 'grade': grade, 'reason': str(exc)})
+        finally:
+            for p in (tmp_front, tmp_back):
+                if p and os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except OSError:
+                        pass
+        job['saved']   = len(saved)
+        job['skipped'] = len(skipped)
+
+    # Step 3: retrain model
+    retrain_result = None
+    if saved:
+        job['status'] = 'training'
+        try:
+            rows = read_training_rows()
+            samples, _ = build_training_samples(rows, training_folder)
+            ml = reload_model()
+            if len(samples) >= 10:
+                meta = ml.train(samples)
+                retrain_result = {
+                    'retrained':      True,
+                    'n_samples':      meta['n_samples'],
+                    'grade_accuracy': meta.get('grade_accuracy_pct'),
+                    'cv_mae':         meta.get('cv_mae'),
+                }
+        except Exception as exc:
+            retrain_result = {'retrained': False, 'error': str(exc)}
+
+    job.update({
+        'status':   'done',
+        'done':     True,
+        'saved':    len(saved),
+        'skipped':  len(skipped),
+        'api_errors': api_errors,
+        'retrain':  retrain_result,
+    })
+
+
+@app.route('/bulk-train-from-auction', methods=['POST'])
+@require_admin
+def bulk_train_from_auction():
+    """Start a background PWCC/Goldin bulk training job."""
+    data = request.get_json(silent=True) or {}
+    search_query = data.get('search_query', '').strip()
+    grades_raw   = data.get('grades', [10, 9, 8])
+    max_per_grade = int(data.get('max_per_grade', 30))
+    sources_raw   = data.get('sources', ['pwcc', 'goldin'])
+
+    if not search_query:
+        return jsonify({'success': False, 'error': 'search_query is required'}), 400
+
+    grades = []
+    for g in grades_raw:
+        try:
+            gf = float(g)
+            if gf in _VALID_PSA_GRADES:
+                grades.append(gf)
+        except (TypeError, ValueError):
+            pass
+    if not grades:
+        return jsonify({'success': False, 'error': 'No valid PSA grades specified'}), 400
+
+    sources = [s for s in sources_raw if s in ('pwcc', 'goldin')]
+    if not sources:
+        sources = ['pwcc', 'goldin']
+
+    job_id = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
+    _auction_jobs[job_id] = {
+        'status': 'starting', 'done': False,
+        'total': 0, 'current': 0, 'saved': 0, 'skipped': 0,
+    }
+    t = threading.Thread(
+        target=_run_auction_bulk_job,
+        args=(job_id, search_query, grades, max_per_grade, sources,
+              app.config['UPLOAD_FOLDER'], app.config['TRAINING_IMAGES_FOLDER']),
+        daemon=True,
+    )
+    t.start()
+    return jsonify({'success': True, 'job_id': job_id})
+
+
+@app.route('/bulk-train-auction-status/<job_id>', methods=['GET'])
+def bulk_train_auction_status(job_id):
+    """Poll progress of a PWCC/Goldin bulk training job."""
+    job = _auction_jobs.get(job_id)
+    if not job:
+        return jsonify({'success': False, 'error': 'Job not found'}), 404
+    return jsonify({'success': True, **job})
+
+
+@app.route('/firecrawl-status', methods=['GET'])
+def firecrawl_status():
+    """Check whether a Firecrawl API key is configured."""
+    from auction_fetcher import firecrawl_available
+    return jsonify({'available': firecrawl_available()})
+
+
+# ---------------------------------------------------------------------------
+# Vision model (EfficientNet-B0) training
+# ---------------------------------------------------------------------------
+
+_vision_jobs: dict = {}  # job_id -> progress dict
+
+
+def _run_vision_training_job(job_id, training_folder, epochs, batch_size):
+    """Background thread: load all training images and fine-tune EfficientNet-B0."""
+    from ml_model_vision import reload_vision_model
+
+    job = _vision_jobs[job_id]
+    job['status'] = 'loading_images'
+
+    try:
+        rows = read_training_rows()
+        image_pairs = []
+        for row in rows:
+            grade_raw = row.get('grade_value') or row.get('psa_grade')
+            try:
+                grade = float(grade_raw)
+            except (TypeError, ValueError):
+                continue
+            if grade not in _VALID_PSA_GRADES:
+                continue
+
+            front_path = os.path.join(training_folder, row.get('front_image', ''))
+            back_path  = os.path.join(training_folder, row.get('back_image', ''))
+            if not os.path.exists(front_path):
+                continue
+
+            notes = row.get('notes', '')
+            weight = 5.0 if notes and 'personal' in notes.lower() else 1.0
+            image_pairs.append((front_path, back_path, grade, weight))
+
+        job['total_pairs'] = len(image_pairs)
+
+        if len(image_pairs) < 20:
+            job.update({
+                'status': 'error',
+                'error':  f'Need at least 20 labeled images (have {len(image_pairs)})',
+                'done':   True,
+            })
+            return
+
+        job['status'] = 'training'
+
+        def _progress(epoch, total, loss):
+            job['epoch']       = epoch
+            job['total_epochs'] = total
+            job['last_loss']   = round(loss, 4)
+
+        vm = reload_vision_model()
+        meta = vm.train(image_pairs, epochs=epochs, batch_size=batch_size,
+                        progress_cb=_progress)
+
+        job.update({
+            'status':         'done',
+            'done':           True,
+            'n_samples':      meta['n_samples'],
+            'n_pairs':        meta['n_pairs'],
+            'train_mae':      meta['train_mae'],
+            'grade_accuracy': meta['grade_accuracy_pct'],
+            'device':         meta.get('device', 'cpu'),
+        })
+
+    except Exception as exc:
+        job.update({'status': 'error', 'error': str(exc), 'done': True})
+
+
+@app.route('/train-vision-model', methods=['POST'])
+@require_admin
+def train_vision_model_route():
+    """Start background EfficientNet-B0 training job."""
+    data = request.get_json(silent=True) or {}
+    epochs     = int(data.get('epochs', 15))
+    batch_size = int(data.get('batch_size', 16))
+
+    job_id = datetime.utcnow().strftime('%Y%m%d%H%M%S%f') + '_v'
+    _vision_jobs[job_id] = {
+        'status': 'queued', 'done': False,
+        'epoch': 0, 'total_epochs': epochs, 'last_loss': None,
+        'total_pairs': 0,
+    }
+    t = threading.Thread(
+        target=_run_vision_training_job,
+        args=(job_id, app.config['TRAINING_IMAGES_FOLDER'], epochs, batch_size),
+        daemon=True,
+    )
+    t.start()
+    return jsonify({'success': True, 'job_id': job_id})
+
+
+@app.route('/vision-model-status', methods=['GET'])
+def vision_model_status_route():
+    """Return current EfficientNet-B0 model status + latest job if any."""
+    from ml_model_vision import get_vision_model
+    vm = get_vision_model()
+    status = vm.status()
+
+    # Also return latest training job progress if one exists
+    latest_job = None
+    if _vision_jobs:
+        latest_id = max(_vision_jobs.keys())
+        latest_job = _vision_jobs[latest_id]
+
+    return jsonify({'success': True, 'model': status, 'latest_job': latest_job})
+
+
+@app.route('/vision-train-status/<job_id>', methods=['GET'])
+def vision_train_status(job_id):
+    """Poll a specific vision training job."""
+    job = _vision_jobs.get(job_id)
+    if not job:
+        return jsonify({'success': False, 'error': 'Job not found'}), 404
+    return jsonify({'success': True, **job})
 
 
 # ---------------------------------------------------------------------------
@@ -1682,6 +2134,7 @@ def deal_finder_route():
     grading_cost  = request.form.get('grading_cost')   or data.get('grading_cost')
     max_listings  = request.form.get('max_listings')   or data.get('max_listings')
     grade_raw     = request.form.get('psa_grade')      or data.get('psa_grade')
+    listing_type  = (request.form.get('listing_type')  or data.get('listing_type')  or '').strip().upper()
 
     if not search_query:
         return jsonify({'success': False, 'error': 'search_query is required'}), 400
@@ -1702,6 +2155,8 @@ def deal_finder_route():
             kwargs['psa_grade_estimate'] = float(grade_raw)
         except (TypeError, ValueError):
             pass
+    if listing_type in ('FIXED_PRICE', 'AUCTION'):
+        kwargs['listing_type'] = listing_type
 
     result = find_deals(search_query, **kwargs)
     return jsonify(result)
@@ -1765,7 +2220,7 @@ def grade_slab():
                 n = status.get('n_samples', 0)
                 ml_weight = min(0.80, max(0.0, (n - 10) / 90))
                 _grade_to_score = {
-                    10.0: 970, 9.5: 940, 9.0: 925, 8.5: 875, 8.0: 825,
+                    10.0: 970, 9.0: 925, 8.5: 875, 8.0: 825,
                     7.5: 775, 7.0: 725, 6.5: 675, 6.0: 625, 5.5: 575,
                     5.0: 525, 4.5: 475, 4.0: 425, 3.5: 375, 3.0: 325,
                     2.5: 275, 2.0: 225, 1.5: 175, 1.0: 125
@@ -1865,4 +2320,5 @@ if __name__ == '__main__':
     # Debug mode should only be enabled in development
     # Set FLASK_ENV=production in production environments
     debug_mode = os.environ.get('FLASK_ENV') != 'production'
-    app.run(debug=debug_mode, host='0.0.0.0', port=5051)
+    port = int(os.environ.get('PORT', 5051))
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)

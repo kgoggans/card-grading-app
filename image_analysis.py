@@ -652,10 +652,138 @@ class CardImageAnalyzer:
         dirty_ratio = float(np.sum(dirty_mask)) / float(dirty_mask.size)
         return min(10.0, dirty_ratio * 300.0)
 
+    def analyze_image_array(self, image: np.ndarray) -> dict:
+        """Analyze a card image from a numpy array (BGR) rather than a file path."""
+        if image is None or image.size == 0:
+            raise ValueError("Empty image array")
+
+        if self.enable_auto_crop:
+            image = self._extract_card_region(image)
+
+        height, width = image.shape[:2]
+        if min(height, width) < self.min_dimension:
+            print(f"Warning: Image resolution is low ({width}x{height}). Results may be less accurate.")
+
+        return {
+            'corners':      self._analyze_corners(image),
+            'edges':        self._analyze_edges(image),
+            'surface':      self._analyze_surface(image),
+            'centering':    self._analyze_centering(image),
+            'print_quality': self._analyze_print_quality(image),
+            'image_dimensions': {'width': width, 'height': height},
+        }
+
+    def extract_card_from_slab(self, image):
+        """
+        Extract the actual card image from inside a PSA/BGS slab photo.
+
+        Returns dict:
+            card_image: cropped numpy array of just the card
+            label_image: cropped numpy array of just the label area
+            label_end_y: pixel row where label ends
+            card_bounds: (x1, y1, x2, y2) of extracted card region
+            method: str describing detection method used
+        """
+        h, w = image.shape[:2]
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+        # --- Step 1: Find where the label ends ---
+        # PSA labels are colorful (high saturation). Card area has lower saturation (mostly white border).
+        sat_profile = np.mean(hsv[:, :, 1], axis=1).astype(np.float32)
+        # Smooth the profile
+        sat_profile = np.convolve(sat_profile, np.ones(5)/5, mode='same')
+
+        label_end_y = int(h * 0.22)  # default fallback
+        top_sat = float(np.mean(sat_profile[:max(1, int(h * 0.08))]))
+
+        # Search for the drop in saturation that signals end of label
+        for i in range(int(h * 0.08), int(h * 0.40)):
+            if sat_profile[i] < top_sat * 0.45:
+                label_end_y = i
+                break
+
+        # --- Step 2: Isolate the card window region (below label, inset from slab borders) ---
+        # PSA slab plastic border is roughly 7-9% on left/right, 3% on bottom
+        border_x = int(w * 0.08)
+        border_bottom = int(h * 0.04)
+        gap_after_label = int(h * 0.015)
+
+        card_top    = label_end_y + gap_after_label
+        card_bottom = h - border_bottom
+        card_left   = border_x
+        card_right  = w - border_x
+
+        # --- Step 3: Try to refine with edge detection inside the window region ---
+        window = image[card_top:card_bottom, card_left:card_right]
+        if window.size > 0:
+            gray_win = cv2.cvtColor(window, cv2.COLOR_BGR2GRAY)
+            edges = cv2.Canny(gray_win, 40, 120)
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            edges = cv2.dilate(edges, kernel, iterations=1)
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            win_h, win_w = window.shape[:2]
+            win_area = float(win_h * win_w)
+            expected_ratio = 2.5 / 3.5
+
+            best_rect = None
+            best_score = -1
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                if area < win_area * 0.25:
+                    continue
+                x, y, cw, ch = cv2.boundingRect(contour)
+                if cw <= 0 or ch <= 0:
+                    continue
+                ratio = cw / float(ch)
+                ratio_err = abs(ratio - expected_ratio)
+                score = (area / win_area) - (ratio_err * 0.5)
+                if score > best_score:
+                    best_score = score
+                    best_rect = (x, y, cw, ch)
+
+            if best_rect is not None:
+                rx, ry, rw, rh = best_rect
+                # Only use if it's a significant portion of the window and not the whole window
+                if rw * rh > win_area * 0.3 and (rw < win_w * 0.98 or rh < win_h * 0.98):
+                    # Map back to full image coordinates
+                    card_left   = card_left + rx
+                    card_top    = card_top + ry
+                    card_right  = card_left + rw
+                    card_bottom = card_top + rh
+                    method = 'edge-detection'
+                else:
+                    method = 'proportional'
+            else:
+                method = 'proportional'
+        else:
+            method = 'proportional'
+
+        # Clamp
+        card_left   = max(0, card_left)
+        card_top    = max(0, card_top)
+        card_right  = min(w, card_right)
+        card_bottom = min(h, card_bottom)
+
+        card_image  = image[card_top:card_bottom, card_left:card_right]
+        label_image = image[0:label_end_y, :]
+
+        if card_image.size == 0:
+            card_image = image  # fallback: use full image
+            method = 'fallback-full'
+
+        return {
+            'card_image':  card_image,
+            'label_image': label_image,
+            'label_end_y': label_end_y,
+            'card_bounds': (card_left, card_top, card_right, card_bottom),
+            'method':      method,
+        }
+
     def _analyze_print_quality(self, image):
         """
         Analyze print quality
-        
+
         Looks for:
         - Focus/sharpness
         - Color accuracy (vibrance)
@@ -721,6 +849,39 @@ def analyze_card_images(front_image_path, back_image_path):
     back_analysis = analyzer.analyze_image(back_image_path)
     
     return front_analysis, back_analysis
+
+
+def analyze_slab_images(front_slab_path, back_slab_path):
+    """
+    Extract card regions from front and back slab photos and analyze them.
+    Returns (front_analysis, back_analysis, slab_info_dict).
+    """
+    analyzer = CardImageAnalyzer()
+
+    front_img = cv2.imread(front_slab_path)
+    back_img  = cv2.imread(back_slab_path)
+
+    if front_img is None:
+        raise ValueError(f"Could not load front slab image: {front_slab_path}")
+    if back_img is None:
+        raise ValueError(f"Could not load back slab image: {back_slab_path}")
+
+    front_slab = analyzer.extract_card_from_slab(front_img)
+    back_slab  = analyzer.extract_card_from_slab(back_img)
+
+    # Analyze the extracted card regions (not the full slab)
+    front_analysis = analyzer.analyze_image_array(front_slab['card_image'])
+    back_analysis  = analyzer.analyze_image_array(back_slab['card_image'])
+
+    slab_info = {
+        'front_method':      front_slab['method'],
+        'back_method':       back_slab['method'],
+        'front_card_bounds': front_slab['card_bounds'],
+        'back_card_bounds':  back_slab['card_bounds'],
+        'front_label_end_y': front_slab['label_end_y'],
+    }
+
+    return front_analysis, back_analysis, slab_info
 
 
 # Example usage

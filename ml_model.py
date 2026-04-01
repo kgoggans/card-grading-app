@@ -28,7 +28,7 @@ MIN_SAMPLES_FOR_ML = 10
 
 # PSA grade → midpoint on 100-1000 scale
 _GRADE_TO_SCORE = {
-    10.0: 970, 9.5: 940, 9.0: 925, 8.5: 875, 8.0: 825,
+    10.0: 970, 9.0: 925, 8.5: 875, 8.0: 825,
     7.5: 775, 7.0: 725, 6.5: 675, 6.0: 625, 5.5: 575,
     5.0: 525, 4.5: 475, 4.0: 425, 3.5: 375, 3.0: 325,
     2.5: 275, 2.0: 225, 1.5: 175, 1.0: 125
@@ -91,17 +91,25 @@ class CardGradingModel:
 
     def train(self, samples: list) -> dict:
         """
-        Train on samples = list of (front_scores_dict, back_scores_dict, psa_grade_float).
+        Train on samples = list of (front_scores_dict, back_scores_dict, psa_grade_float)
+        or (front_scores_dict, back_scores_dict, psa_grade_float, weight_float).
+        Personal scans should pass weight=5.0; eBay imports default to weight=1.0.
         Returns meta dict with accuracy info or raises ValueError.
         """
         if not _SKLEARN_AVAILABLE:
             raise ValueError("scikit-learn is not installed. Run: pip install scikit-learn joblib")
 
-        X_list, y_list = [], []
-        for front_scores, back_scores, psa_grade in samples:
+        X_list, y_list, w_list = [], [], []
+        for entry in samples:
             try:
+                if len(entry) == 4:
+                    front_scores, back_scores, psa_grade, weight = entry
+                else:
+                    front_scores, back_scores, psa_grade = entry
+                    weight = 1.0
                 X_list.append(build_feature_vector(front_scores, back_scores))
                 y_list.append(float(psa_grade))
+                w_list.append(float(weight))
             except Exception:
                 continue
 
@@ -113,6 +121,7 @@ class CardGradingModel:
 
         X = np.array(X_list)
         y = np.array(y_list)
+        w = np.array(w_list)
 
         pipeline = Pipeline([
             ('scaler', StandardScaler()),
@@ -138,7 +147,7 @@ class CardGradingModel:
             )
             cv_mae = float(-cv_scores.mean())
 
-        pipeline.fit(X, y)
+        pipeline.fit(X, y, gbr__sample_weight=w)
         self._pipeline = pipeline
 
         train_pred = pipeline.predict(X)

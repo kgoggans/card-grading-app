@@ -634,7 +634,13 @@
             <h2 style="margin: 0 0 6px 0; font-size: 1.4em; color: #fff;">🔎 Deal Finder</h2>
             <p style="margin: 0 0 20px 0; font-size: 0.88em; color: #aaa;">Compare active eBay listings to recent sold prices. See raw flip profit and graded profit potential.</p>
 
-            <div style="display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: end; flex-wrap: wrap;">
+            <!-- Search history -->
+            <div id="df-history-bar" style="display:none; margin-bottom: 12px;">
+              <span style="font-size: 0.78em; color: #666; margin-right: 6px;">Recent:</span>
+              <span id="df-history-chips"></span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 10px; align-items: end; flex-wrap: wrap;">
               <div>
                 <label style="font-size: 0.82em; color: #aaa; display: block; margin-bottom: 4px;">Card Search Query</label>
                 <input id="df-query" type="text" placeholder="e.g. 2021 Topps Chrome Mike Trout #27"
@@ -651,6 +657,14 @@
                 </select>
               </div>
               <div>
+                <label style="font-size: 0.82em; color: #aaa; display: block; margin-bottom: 4px;">Listing Type</label>
+                <select id="df-listing-type" style="padding: 10px 12px; border-radius: 8px; border: 1px solid #444; background: #0f3460; color: #fff; font-size: 0.9em;">
+                  <option value="">All Types</option>
+                  <option value="FIXED_PRICE">Buy It Now</option>
+                  <option value="AUCTION">Auction</option>
+                </select>
+              </div>
+              <div>
                 <label style="font-size: 0.82em; color: #aaa; display: block; margin-bottom: 4px;">Grading Cost ($)</label>
                 <input id="df-grading-cost" type="number" value="25" min="1" max="500"
                   style="width: 90px; padding: 10px 10px; border-radius: 8px; border: 1px solid #444; background: #0f3460; color: #fff; font-size: 0.9em; outline: none;">
@@ -659,6 +673,16 @@
                 style="padding: 10px 22px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; border-radius: 8px; font-size: 0.95em; font-weight: 600; cursor: pointer; white-space: nowrap;">
                 Find Deals
               </button>
+            </div>
+
+            <!-- Exclude keywords row -->
+            <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 220px;">
+                <label style="font-size: 0.78em; color: #666; display: block; margin-bottom: 3px;">Exclude titles containing (comma-separated)</label>
+                <input id="df-exclude" type="text" value="chase pack,chaser pack,lot,repack,mystery,blind"
+                  placeholder="e.g. chase pack, lot, repack"
+                  style="width: 100%; padding: 7px 12px; border-radius: 7px; border: 1px solid #333; background: #0a0a1a; color: #bbb; font-size: 0.85em; outline: none;">
+              </div>
             </div>
 
             <!-- Loading -->
@@ -688,6 +712,11 @@
                 <div style="background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px 18px; text-align: center; min-width: 100px;">
                   <div id="df-stat-buy-count" style="font-size: 1.4em; font-weight: 700; color: #80cbc4;">—</div>
                   <div style="font-size: 0.75em; color: #888; margin-top: 2px;">BUY Opportunities</div>
+                </div>
+                <div id="df-stat-trend-wrap" style="display:none; background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px 18px; text-align: center; min-width: 130px;">
+                  <div id="df-stat-trend" style="font-size: 1.4em; font-weight: 700;">—</div>
+                  <div id="df-stat-trend-sub" style="font-size: 0.7em; color: #aaa; margin-top: 1px;"></div>
+                  <div style="font-size: 0.75em; color: #888; margin-top: 2px;">Raw Price Trend</div>
                 </div>
               </div>
             </div>
@@ -972,6 +1001,88 @@
                              border:1px solid #9ae6b4; border-radius:8px; padding:12px;
                              font-size:0.88em; color:#22543d; line-height:1.7;"></div>
                     </div>
+
+                    <!-- PWCC / Goldin Auction Import -->
+                    <div style="margin-top:12px; border-top:1px solid #d9e2ff; padding-top:12px;">
+                        <h4 style="color:#2b6cb0; margin-bottom:4px;">Auction House Auto-Import (High Quality)</h4>
+                        <p style="color:#4a5568; font-size:0.92em; margin-bottom:4px;">
+                            Fetch professional front+back photos from Fanatics Collect (formerly PWCC), Goldin, and Heritage Auctions.
+                            These sites block plain scrapers — uses <strong>Firecrawl</strong> to bypass protection.
+                        </p>
+                        <div id="firecrawlStatus" style="font-size:0.85em; margin-bottom:8px; padding:6px 10px;
+                             background:#fffbeb; border:1px solid #f6c90e; border-radius:6px; color:#744210;">
+                            Checking Firecrawl key...
+                        </div>
+                        <div class="bulk-files" style="grid-template-columns: 1fr;">
+                            <input type="text" id="auctionTrainQuery" placeholder='e.g. "Michael Jordan Fleer 1986"'
+                                   style="font-size:0.95em;">
+                        </div>
+                        <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                            <strong style="font-size:0.9em; color:#4a5568;">Grades to fetch:</strong>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-grade-cb" value="10" checked> PSA 10</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-grade-cb" value="9" checked> PSA 9</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-grade-cb" value="8.5"> PSA 8.5</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-grade-cb" value="8" checked> PSA 8</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-grade-cb" value="7"> PSA 7</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-grade-cb" value="6"> PSA 6</label>
+                        </div>
+                        <div style="margin-top:8px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <label style="font-size:0.9em; color:#4a5568;">Max per grade:
+                                <input type="number" id="auctionMaxPerGrade" value="50" min="1" max="500"
+                                       style="width:70px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; margin-left:4px;">
+                            </label>
+                            <label style="font-size:0.9em; color:#4a5568;">Sources:</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-source-cb" value="pwcc" checked> Fanatics/PWCC</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-source-cb" value="goldin" checked> Goldin</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-source-cb" value="heritage" checked> Heritage</label>
+                            <button class="save-sample-button" id="auctionTrainButton" onclick="runAuctionBulkTrain()"
+                                    style="background: linear-gradient(135deg,#6b46c1,#553c9a);">
+                                Fetch &amp; Train from Auctions
+                            </button>
+                        </div>
+                        <div class="bulk-summary" id="auctionTrainStatus" style="margin-top:8px;">Ready.</div>
+                        <div id="auctionTrainResult" style="display:none; margin-top:8px; background:#faf5ff;
+                             border:1px solid #d6bcfa; border-radius:8px; padding:12px;
+                             font-size:0.88em; color:#44337a; line-height:1.7;"></div>
+                    </div>
+                </div>
+
+                <!-- ====================================================
+                     VISION AI MODEL (EfficientNet-B0)
+                     ==================================================== -->
+                <div style="margin-top:16px; border-top:2px solid #805ad5; padding-top:14px;">
+                    <h4 style="color:#6b46c1; margin-bottom:4px;">Vision AI Model (EfficientNet-B0)</h4>
+                    <p style="color:#4a5568; font-size:0.92em; margin-bottom:10px;">
+                        Train a deep learning model that grades cards directly from pixels — no CV features needed.
+                        More accurate than the feature-based model once you have 500+ labeled images.
+                        Uses your Apple Silicon GPU (MPS) automatically.
+                    </p>
+                    <div id="visionModelStatus" style="font-size:0.88em; color:#4a5568; margin-bottom:8px;">
+                        Loading vision model status...
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <label style="font-size:0.9em; color:#4a5568;">Epochs:
+                            <input type="number" id="visionEpochs" value="15" min="5" max="50"
+                                   style="width:60px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; margin-left:4px;">
+                        </label>
+                        <button id="visionTrainBtn" onclick="runVisionTraining()"
+                                style="padding:10px 18px; background:linear-gradient(135deg,#6b46c1,#553c9a);
+                                       color:#fff; border:none; border-radius:8px; cursor:pointer;
+                                       font-size:0.95em; font-weight:600;">
+                            Train Vision Model
+                        </button>
+                        <span id="visionTrainStatus" style="font-size:0.88em; color:#4a5568;"></span>
+                    </div>
+                    <div id="visionProgressBar" style="display:none; margin-top:10px;">
+                        <div style="background:#e9d8fd; border-radius:8px; height:12px; overflow:hidden;">
+                            <div id="visionProgressFill" style="height:100%; background:linear-gradient(90deg,#6b46c1,#805ad5);
+                                 width:0%; transition:width 0.4s ease; border-radius:8px;"></div>
+                        </div>
+                        <div id="visionProgressLabel" style="font-size:0.82em; color:#6b46c1; margin-top:4px;"></div>
+                    </div>
+                    <div id="visionTrainResult" style="display:none; margin-top:10px; background:#faf5ff;
+                         border:1px solid #d6bcfa; border-radius:8px; padding:12px;
+                         font-size:0.9em; color:#44337a; line-height:1.7;"></div>
                 </div>
 
                 <!-- ====================================================
@@ -1735,24 +1846,19 @@
 
         async function runEbayBulkTrain() {
             const query = document.getElementById('ebayTrainQuery').value.trim();
-            if (!query) {
-                document.getElementById('ebayTrainStatus').textContent = 'Please enter a search query first.';
-                return;
-            }
+            if (!query) { document.getElementById('ebayTrainStatus').textContent = 'Please enter a search query first.'; return; }
             const grades = Array.from(document.querySelectorAll('.ebay-grade-cb:checked')).map(cb => parseFloat(cb.value));
-            if (!grades.length) {
-                document.getElementById('ebayTrainStatus').textContent = 'Select at least one grade.';
-                return;
-            }
-            const maxPerGrade = parseInt(document.getElementById('ebayMaxPerGrade').value) || 10;
+            if (!grades.length) { document.getElementById('ebayTrainStatus').textContent = 'Select at least one grade.'; return; }
+            const maxPerGrade = parseInt(document.getElementById('ebayMaxPerGrade').value) || 50;
             const btn = document.getElementById('ebayTrainButton');
             const status = document.getElementById('ebayTrainStatus');
             const resultDiv = document.getElementById('ebayTrainResult');
 
             btn.disabled = true;
             resultDiv.style.display = 'none';
-            status.textContent = `Fetching up to ${grades.length * maxPerGrade} listings from eBay...`;
+            status.textContent = 'Starting eBay fetch...';
 
+            let jobId = null;
             try {
                 const resp = await fetch('/bulk-train-from-ebay', {
                     method: 'POST',
@@ -1762,39 +1868,272 @@
                 const data = await resp.json();
                 if (!data.success) {
                     status.textContent = 'Error: ' + (data.error || 'Unknown error');
-                    resultDiv.innerHTML = `<strong>Error:</strong> ${data.error || 'Unknown error'}`;
+                    resultDiv.innerHTML = `<strong>Error:</strong> ${data.error}`;
                     resultDiv.style.display = 'block';
+                    btn.disabled = false;
                     return;
                 }
-                status.textContent = `Done. Saved ${data.saved}, skipped ${data.skipped}.`;
-                if (data.api_errors && data.api_errors.length) {
-                    status.textContent += ' (some grades failed: see details)';
-                }
-                let html = `<strong>Saved ${data.saved} new training samples</strong> (${data.skipped} skipped).<br>`;
-                if (data.retrain) {
-                    if (data.retrain.retrained) {
-                        html += `Model retrained on ${data.retrain.n_samples} total samples — grade accuracy: ${data.retrain.grade_accuracy}%<br>`;
-                    } else {
-                        html += `Retrain skipped: ${data.retrain.error || 'not enough samples'}<br>`;
-                    }
-                }
-                if (data.saved_items && data.saved_items.length) {
-                    html += '<br><strong>Saved:</strong><ul style="margin:4px 0 0 16px;">';
-                    data.saved_items.slice(0, 10).forEach(i => {
-                        html += `<li>PSA ${i.grade} — ${i.title.substring(0, 70)}</li>`;
-                    });
-                    if (data.saved > 10) html += `<li>...and ${data.saved - 10} more</li>`;
-                    html += '</ul>';
-                }
-                resultDiv.innerHTML = html;
-                resultDiv.style.display = 'block';
-                if (data.dataset) updateDatasetStats(data.dataset);
-                loadMlStatus();
+                jobId = data.job_id;
             } catch (err) {
                 status.textContent = 'Error: ' + err.message;
-            } finally {
                 btn.disabled = false;
+                return;
             }
+
+            // Poll for progress
+            const poll = setInterval(async () => {
+                try {
+                    const r = await fetch(`/bulk-train-status/${jobId}`);
+                    const job = await r.json();
+
+                    if (job.status === 'error') {
+                        clearInterval(poll);
+                        status.textContent = 'Error: ' + job.error;
+                        btn.disabled = false;
+                        return;
+                    }
+
+                    if (job.status === 'downloading') {
+                        const pct = job.total > 0 ? Math.round((job.current / job.total) * 100) : 0;
+                        status.textContent = `Downloading ${job.current} of ${job.total} images... (${job.saved} saved, ${job.skipped} skipped)`;
+                    } else if (job.status === 'training') {
+                        status.textContent = `Retraining ML model on ${job.saved} new samples...`;
+                    } else if (job.status === 'starting') {
+                        status.textContent = 'Fetching listings from eBay...';
+                    }
+
+                    if (job.done) {
+                        clearInterval(poll);
+                        status.textContent = `Done! Saved ${job.saved}, skipped ${job.skipped}.`;
+                        let html = `<strong>Saved ${job.saved} new training samples</strong> (${job.skipped} skipped).<br>`;
+                        if (job.retrain) {
+                            if (job.retrain.retrained) {
+                                html += `Model retrained on ${job.retrain.n_samples} total samples — grade accuracy: ${job.retrain.grade_accuracy}%<br>`;
+                            } else {
+                                html += `Retrain skipped: ${job.retrain.error || 'not enough samples'}<br>`;
+                            }
+                        }
+                        if (job.api_errors && job.api_errors.length) {
+                            html += `<br><strong>API errors:</strong> ${job.api_errors.join(', ')}<br>`;
+                        }
+                        if (job.saved_items && job.saved_items.length) {
+                            html += '<br><strong>Saved:</strong><ul style="margin:4px 0 0 16px;">';
+                            job.saved_items.slice(0, 10).forEach(i => {
+                                html += `<li>PSA ${i.grade} — ${i.title.substring(0, 70)}</li>`;
+                            });
+                            if (job.saved > 10) html += `<li>...and ${job.saved - 10} more</li>`;
+                            html += '</ul>';
+                        }
+                        resultDiv.innerHTML = html;
+                        resultDiv.style.display = 'block';
+                        if (job.dataset) updateDatasetStats(job.dataset);
+                        loadMlStatus();
+                        btn.disabled = false;
+                    }
+                } catch (e) { /* ignore transient poll errors */ }
+            }, 2000);
+        }
+
+        // ----------------------------------------------------------------
+        // Firecrawl + Auction House Bulk Train
+        // ----------------------------------------------------------------
+        async function loadFirecrawlStatus() {
+            try {
+                const r = await fetch('/firecrawl-status');
+                const data = await r.json();
+                const el = document.getElementById('firecrawlStatus');
+                if (data.available) {
+                    el.style.background = '#f0fff4';
+                    el.style.borderColor = '#9ae6b4';
+                    el.style.color = '#22543d';
+                    el.innerHTML = '✅ <strong>Firecrawl connected.</strong> Ready to scrape Fanatics Collect, Goldin, and Heritage.';
+                } else {
+                    el.style.background = '#fffbeb';
+                    el.style.borderColor = '#f6ad55';
+                    el.style.color = '#7b341e';
+                    el.innerHTML = '⚠️ <strong>Firecrawl API key not set.</strong> '
+                        + 'Add <code>FIRECRAWL_API_KEY=fc-...</code> to your <code>.env</code> file and restart.';
+                }
+            } catch(e) {}
+        }
+
+        async function runAuctionBulkTrain() {
+            const query = document.getElementById('auctionTrainQuery').value.trim();
+            if (!query) { document.getElementById('auctionTrainStatus').textContent = 'Please enter a search query first.'; return; }
+            const grades = Array.from(document.querySelectorAll('.auction-grade-cb:checked')).map(cb => parseFloat(cb.value));
+            if (!grades.length) { document.getElementById('auctionTrainStatus').textContent = 'Select at least one grade.'; return; }
+            const sources = Array.from(document.querySelectorAll('.auction-source-cb:checked')).map(cb => cb.value);
+            if (!sources.length) { document.getElementById('auctionTrainStatus').textContent = 'Select at least one source (PWCC or Goldin).'; return; }
+            const maxPerGrade = parseInt(document.getElementById('auctionMaxPerGrade').value) || 30;
+
+            const btn = document.getElementById('auctionTrainButton');
+            const status = document.getElementById('auctionTrainStatus');
+            const resultDiv = document.getElementById('auctionTrainResult');
+
+            btn.disabled = true;
+            resultDiv.style.display = 'none';
+            status.textContent = 'Starting auction fetch...';
+
+            let jobId = null;
+            try {
+                const resp = await fetch('/bulk-train-from-auction', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({search_query: query, grades, max_per_grade: maxPerGrade, sources})
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    status.textContent = 'Error: ' + (data.error || 'Unknown error');
+                    resultDiv.innerHTML = `<strong>Error:</strong> ${data.error}`;
+                    resultDiv.style.display = 'block';
+                    btn.disabled = false;
+                    return;
+                }
+                jobId = data.job_id;
+            } catch (err) {
+                status.textContent = 'Error: ' + err.message;
+                btn.disabled = false;
+                return;
+            }
+
+            const poll = setInterval(async () => {
+                try {
+                    const r = await fetch(`/bulk-train-auction-status/${jobId}`);
+                    const job = await r.json();
+
+                    if (job.status === 'error') {
+                        clearInterval(poll);
+                        status.textContent = 'Error: ' + job.error;
+                        btn.disabled = false;
+                        return;
+                    }
+                    if (job.status === 'downloading') {
+                        status.textContent = `Downloading ${job.current} of ${job.total} images... (${job.saved} saved, ${job.skipped} skipped)`;
+                    } else if (job.status === 'training') {
+                        status.textContent = `Retraining ML model on ${job.saved} new samples...`;
+                    } else if (job.status === 'starting') {
+                        status.textContent = 'Fetching listings from auction houses...';
+                    }
+
+                    if (job.done) {
+                        clearInterval(poll);
+                        status.textContent = `Done! Saved ${job.saved}, skipped ${job.skipped}.`;
+                        let html = `<strong>Saved ${job.saved} new training samples</strong> (${job.skipped} skipped).<br>`;
+                        if (job.retrain) {
+                            if (job.retrain.retrained) {
+                                html += `Model retrained on ${job.retrain.n_samples} total samples — grade accuracy: ${job.retrain.grade_accuracy}%<br>`;
+                            } else {
+                                html += `Retrain skipped: ${job.retrain.error || 'not enough samples'}<br>`;
+                            }
+                        }
+                        if (job.api_errors && job.api_errors.length) {
+                            html += `<br><strong>Note:</strong> ${job.api_errors.join(' | ')}<br>`;
+                            html += `<em style="color:#666;">Tip: PWCC/Goldin may require manual image upload if their API is blocked. eBay bulk import will still work.</em><br>`;
+                        }
+                        resultDiv.innerHTML = html;
+                        resultDiv.style.display = 'block';
+                        loadMlStatus();
+                        btn.disabled = false;
+                    }
+                } catch (e) { /* ignore transient errors */ }
+            }, 2000);
+        }
+
+        // ----------------------------------------------------------------
+        // Vision Model (EfficientNet-B0) Training
+        // ----------------------------------------------------------------
+        async function loadVisionModelStatus() {
+            try {
+                const r = await fetch('/vision-model-status');
+                const data = await r.json();
+                if (!data.success) return;
+                const m = data.model;
+                const el = document.getElementById('visionModelStatus');
+                if (m.is_trained) {
+                    el.innerHTML = `<strong style="color:#6b46c1;">Vision AI: Active</strong> — ${m.n_pairs} image pairs • ${m.grade_accuracy_pct}% grade accuracy • device: ${m.device || 'cpu'} • trained ${m.trained_at ? new Date(m.trained_at + 'Z').toLocaleDateString() : '—'}`;
+                } else if (!m.torch_available) {
+                    el.innerHTML = `<strong style="color:#c05621;">Vision AI: PyTorch not installed.</strong> Run: <code>pip install torch torchvision pillow</code>`;
+                } else {
+                    el.innerHTML = `<strong style="color:#805ad5;">Vision AI: Not trained yet.</strong> You need at least 20 labeled images to start training.`;
+                }
+            } catch(e) {}
+        }
+
+        async function runVisionTraining() {
+            const epochs = parseInt(document.getElementById('visionEpochs').value) || 15;
+            const btn = document.getElementById('visionTrainBtn');
+            const statusEl = document.getElementById('visionTrainStatus');
+            const progressBar = document.getElementById('visionProgressBar');
+            const progressFill = document.getElementById('visionProgressFill');
+            const progressLabel = document.getElementById('visionProgressLabel');
+            const resultDiv = document.getElementById('visionTrainResult');
+
+            btn.disabled = true;
+            resultDiv.style.display = 'none';
+            progressBar.style.display = 'block';
+            progressFill.style.width = '0%';
+            statusEl.textContent = 'Starting...';
+
+            let jobId = null;
+            try {
+                const resp = await fetch('/train-vision-model', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({epochs})
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    statusEl.textContent = 'Error: ' + (data.error || 'Unknown');
+                    progressBar.style.display = 'none';
+                    btn.disabled = false;
+                    return;
+                }
+                jobId = data.job_id;
+            } catch (err) {
+                statusEl.textContent = 'Error: ' + err.message;
+                progressBar.style.display = 'none';
+                btn.disabled = false;
+                return;
+            }
+
+            const poll = setInterval(async () => {
+                try {
+                    const r = await fetch(`/vision-train-status/${jobId}`);
+                    const job = await r.json();
+
+                    if (job.status === 'error') {
+                        clearInterval(poll);
+                        statusEl.textContent = 'Error: ' + job.error;
+                        progressBar.style.display = 'none';
+                        btn.disabled = false;
+                        return;
+                    }
+                    if (job.status === 'loading_images') {
+                        statusEl.textContent = 'Loading training images...';
+                        progressFill.style.width = '5%';
+                    } else if (job.status === 'training') {
+                        const pct = job.total_epochs > 0 ? Math.round((job.epoch / job.total_epochs) * 95) + 5 : 5;
+                        progressFill.style.width = pct + '%';
+                        progressLabel.textContent = `Epoch ${job.epoch} / ${job.total_epochs}  —  loss: ${job.last_loss || '…'}`;
+                        statusEl.textContent = `Training on ${job.total_pairs} image pairs (device: GPU/MPS)...`;
+                    }
+
+                    if (job.done) {
+                        clearInterval(poll);
+                        progressFill.style.width = '100%';
+                        statusEl.textContent = `Done! ${job.grade_accuracy}% accuracy on ${job.n_pairs} card pairs.`;
+                        resultDiv.innerHTML = `
+                            <strong>Vision model trained successfully!</strong><br>
+                            Image pairs: ${job.n_pairs}  |  Total images: ${job.n_samples}<br>
+                            Grade accuracy: <strong>${job.grade_accuracy}%</strong>  |  MAE: ${job.train_mae}<br>
+                            Device: ${job.device || 'cpu'}
+                        `;
+                        resultDiv.style.display = 'block';
+                        loadVisionModelStatus();
+                        btn.disabled = false;
+                    }
+                } catch (e) { /* ignore */ }
+            }, 2000);
         }
 
         function updateDatasetStats(dataset) {
@@ -2168,7 +2507,46 @@
         }
 
         // Call on page load
-        document.addEventListener('DOMContentLoaded', loadMlStatus);
+        document.addEventListener('DOMContentLoaded', () => {
+            loadMlStatus();
+            loadVisionModelStatus();
+            loadFirecrawlStatus();
+            dfRenderHistory();
+        });
+
+        // ---- Deal Finder search history (localStorage) ----
+        const DF_HISTORY_KEY = 'df_search_history';
+        function dfSaveHistory(query, grade, listingType) {
+          const h = dfLoadHistory();
+          const entry = { query, grade, listingType, ts: Date.now() };
+          const filtered = h.filter(e => e.query !== query || e.grade !== grade || e.listingType !== listingType);
+          filtered.unshift(entry);
+          localStorage.setItem(DF_HISTORY_KEY, JSON.stringify(filtered.slice(0, 15)));
+          dfRenderHistory();
+        }
+        function dfLoadHistory() {
+          try { return JSON.parse(localStorage.getItem(DF_HISTORY_KEY) || '[]'); } catch { return []; }
+        }
+        function dfRenderHistory() {
+          const h = dfLoadHistory();
+          const bar = document.getElementById('df-history-bar');
+          const chips = document.getElementById('df-history-chips');
+          if (!h.length) { bar.style.display = 'none'; return; }
+          bar.style.display = 'block';
+          chips.innerHTML = h.map((e, i) => {
+            const label = e.query + (e.grade ? ` PSA${e.grade}` : '') + (e.listingType === 'AUCTION' ? ' 🔨' : e.listingType === 'FIXED_PRICE' ? ' 🛒' : '');
+            return `<span onclick="dfRestoreHistory(${i})" style="cursor:pointer; display:inline-block; margin-right:6px; margin-bottom:4px; padding:3px 10px; border-radius:12px; background:rgba(255,255,255,0.07); color:#bbb; font-size:0.78em; border:1px solid #333;" title="${e.query}">${label}</span>`;
+          }).join('');
+        }
+        function dfRestoreHistory(i) {
+          const h = dfLoadHistory();
+          const e = h[i];
+          if (!e) return;
+          document.getElementById('df-query').value = e.query;
+          document.getElementById('df-grade').value = e.grade || '';
+          document.getElementById('df-listing-type').value = e.listingType || '';
+          runDealFinder();
+        }
 
         // ---- Deal Finder ----
         async function runDealFinder() {
@@ -2180,6 +2558,9 @@
 
           const grade        = document.getElementById('df-grade').value;
           const gradingCost  = document.getElementById('df-grading-cost').value;
+          const listingType  = document.getElementById('df-listing-type').value;
+          const excludeRaw   = document.getElementById('df-exclude').value;
+          const excludeTerms = excludeRaw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
 
           // UI reset
           ['df-loading','df-summary','df-results','df-empty','df-error','df-comps-warning'].forEach(id => {
@@ -2189,6 +2570,7 @@
 
           const body = { search_query: query, grading_cost: parseFloat(gradingCost) || 25 };
           if (grade) body.psa_grade = parseFloat(grade);
+          if (listingType) body.listing_type = listingType;
 
           let data;
           try {
@@ -2215,9 +2597,37 @@
             return;
           }
 
+          // Client-side exclude filter
+          if (excludeTerms.length && data.deals) {
+            const before = data.deals.length;
+            data.deals = data.deals.filter(d => {
+              const t = d.title.toLowerCase();
+              return !excludeTerms.some(ex => t.includes(ex));
+            });
+            if (data.deals.length < before) {
+              const removed = before - data.deals.length;
+              const warn = document.getElementById('df-comps-warning');
+              warn.textContent = `ℹ️ ${removed} listing${removed > 1 ? 's' : ''} hidden by exclude filter (${excludeRaw}).`;
+              warn.style.display = 'block';
+            }
+          }
+
           if (!data.deals || data.deals.length === 0) {
-            document.getElementById('df-empty').style.display = 'block';
+            const emptyEl = document.getElementById('df-empty');
+            emptyEl.innerHTML = `No active eBay listings found for <strong>"${data.query}"</strong>.<br>
+              <small style="color:#777; margin-top:6px; display:block;">Check spelling and try a simpler search — e.g. <em>cooper flagg topps chrome</em> instead of <em>topps chrome copper flagg #251</em>.</small>`;
+            emptyEl.style.display = 'block';
             return;
+          }
+
+          // Save to history after confirmed results
+          dfSaveHistory(query, grade, listingType);
+
+          // Show note if we fell back to a broader query (e.g. card number stripped)
+          if (data.search_query_used && data.search_query_used !== data.query) {
+            const warn = document.getElementById('df-comps-warning');
+            warn.textContent = `ℹ️ No results for "${data.query}" — showing results for "${data.search_query_used}" instead.`;
+            warn.style.display = 'block';
           }
 
           // Populate summary stats
@@ -2228,15 +2638,46 @@
           document.getElementById('df-stat-psa10').textContent = sc.psa10 ? fmt(sc.psa10.median) : '—';
           const buyCount = data.deals.filter(d => d.verdict === 'BUY').length;
           document.getElementById('df-stat-buy-count').textContent = buyCount;
+
+          // Populate price trend widget
+          const trend = data.price_trend;
+          const trendWrap = document.getElementById('df-stat-trend-wrap');
+          if (trend && trend.direction && trend.direction !== 'insufficient') {
+            const arrowMap = { up: '↑', down: '↓', flat: '→' };
+            const colorMap = { up: '#ef9a9a', down: '#a5d6a7', flat: '#ffe082' };
+            // up = rising prices = harder to find deals (warn); down = falling = easier (good for buyers)
+            const arrow = arrowMap[trend.direction] || '→';
+            const color = colorMap[trend.direction] || '#ccc';
+            const pctStr = trend.pct_change != null ? (trend.pct_change > 0 ? '+' : '') + trend.pct_change + '%' : '';
+            document.getElementById('df-stat-trend').innerHTML =
+              `<span style="color:${color}">${arrow} ${pctStr}</span>`;
+            const recentStr = trend.recent_median != null ? '$' + trend.recent_median.toFixed(2) : '?';
+            const olderStr  = trend.older_median  != null ? '$' + trend.older_median.toFixed(2)  : '?';
+            document.getElementById('df-stat-trend-sub').textContent =
+              `${recentStr} vs ${olderStr} (45-120d)`;
+            trendWrap.style.display = 'block';
+          } else {
+            trendWrap.style.display = 'none';
+          }
+
           document.getElementById('df-summary').style.display = 'block';
 
           // Show comps warning if Finding API failed (rate limit etc)
           const compWarn = document.getElementById('df-comps-warning');
           if (data.sold_comps_error) {
             const isRateLimit = data.sold_comps_error.includes('10001') || data.sold_comps_error.includes('RateLimiter');
-            compWarn.textContent = isRateLimit
-              ? '⚠️ eBay Finding API daily limit reached (5K calls/day). Sold comp prices are unavailable until midnight Pacific. Active listings are still shown. Try again tomorrow or after midnight.'
-              : '⚠️ Could not load sold comps: ' + data.sold_comps_error;
+            if (isRateLimit) {
+              // Calculate time until midnight Pacific
+              const now = new Date();
+              const ptOffset = now.toLocaleString('en-US', {timeZone: 'America/Los_Angeles', hour12: false}).includes('24') ? -8 : -7;
+              const ptMidnight = new Date(now);
+              ptMidnight.setUTCHours(8 - ptOffset, 0, 0, 0); // midnight PT = 7 or 8 UTC
+              if (ptMidnight <= now) ptMidnight.setUTCDate(ptMidnight.getUTCDate() + 1);
+              const hoursLeft = Math.ceil((ptMidnight - now) / 3600000);
+              compWarn.textContent = `⚠️ eBay sold comps API limit reached (5K calls/day). Resets in ~${hoursLeft}h (midnight Pacific). Active listings still shown above — profit/ROI columns will be blank until reset. Each card graded uses 1–2 API calls; 24-hour caching is now enabled to reduce usage.`;
+            } else {
+              compWarn.textContent = '⚠️ Could not load sold comps: ' + data.sold_comps_error;
+            }
             compWarn.style.display = 'block';
           } else {
             compWarn.style.display = 'none';

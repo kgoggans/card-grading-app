@@ -8,12 +8,16 @@ Market Comparables — priority order:
   2. SportsCardsPro API (aggregated prices, 1 call) — requires SPORTSCARDSPRO_API_KEY
      Sign up at sportscardspro.com → Legendary ($49/mo) → Subscription → API/Download
 
-  3. eBay Finding API (findCompletedItems, 5K calls/day) — requires EBAY_APP_ID
+  3. Firecrawl (scrapes eBay sold listings, no rate limit) — requires FIRECRAWL_API_KEY
+     Already set up for auction house image fetching.
 
-  4. eBay Browse API (active listings, 5M calls/day) — requires EBAY_APP_ID + EBAY_CLIENT_SECRET
+  4. eBay Finding API (findCompletedItems, 5K calls/day) — requires EBAY_APP_ID
+
+  5. eBay Browse API (active listings, 5M calls/day) — requires EBAY_APP_ID + EBAY_CLIENT_SECRET
 
   export CARD_HEDGE_API_KEY=your_key
   export SPORTSCARDSPRO_API_KEY=your_40_char_token
+  export FIRECRAWL_API_KEY=your_key
   export EBAY_APP_ID=your_app_id
   export EBAY_CLIENT_SECRET=your_cert_id
 """
@@ -65,7 +69,7 @@ _oauth_cache: dict = {}
 # queries.  Keys are normalized query strings; TTL default = 6 hours.
 # ---------------------------------------------------------------------------
 _comps_cache: dict = {}
-_CACHE_TTL_SECS: int = 6 * 3600  # 6 hours
+_CACHE_TTL_SECS: int = 24 * 3600  # 24 hours — conserve eBay Finding API (5K calls/day limit)
 
 
 def _cache_get(key: str):
@@ -77,6 +81,75 @@ def _cache_get(key: str):
 
 def _cache_set(key: str, data, ttl: int = _CACHE_TTL_SECS):
     _comps_cache[key] = {'data': data, 'expires_at': time.time() + ttl}
+
+
+def _calc_price_trend(items: list) -> dict:
+    """
+    Given a list of sold items with 'price' and 'sold_date' fields (e.g. 'Mar 31, 2026'),
+    split into recent (≤45 days) vs older (46-120 days) buckets and return trend info.
+
+    Returns:
+        {
+          'pct_change':     float | None,   # positive = rising, negative = falling
+          'direction':      'up'|'down'|'flat'|'insufficient',
+          'recent_median':  float | None,
+          'older_median':   float | None,
+          'recent_count':   int,
+          'older_count':    int,
+          'days_covered':   int,            # oldest sale found, in days ago
+        }
+    """
+    from datetime import datetime as _dt
+    now = _dt.utcnow()
+    recent, older = [], []
+    oldest_days = 0
+
+    for item in items:
+        date_str = item.get('sold_date', '')
+        price = item.get('price')
+        if not date_str or price is None:
+            continue
+        try:
+            dt = _dt.strptime(date_str.strip(), '%b %d, %Y')
+            days_ago = (now - dt).days
+            oldest_days = max(oldest_days, days_ago)
+            if days_ago <= 45:
+                recent.append(price)
+            elif days_ago <= 120:
+                older.append(price)
+        except (ValueError, TypeError):
+            continue
+
+    MIN_BUCKET = 3  # need at least 3 sales per bucket for a meaningful comparison
+
+    if len(recent) < MIN_BUCKET and len(older) < MIN_BUCKET:
+        return {
+            'pct_change': None, 'direction': 'insufficient',
+            'recent_median': _compute_stats(recent)['median'] if recent else None,
+            'older_median':  _compute_stats(older)['median']  if older  else None,
+            'recent_count': len(recent), 'older_count': len(older),
+            'days_covered': oldest_days,
+        }
+
+    recent_median = _compute_stats(recent)['median'] if len(recent) >= 1 else None
+    older_median  = _compute_stats(older)['median']  if len(older)  >= 1 else None
+
+    if recent_median and older_median and older_median > 0:
+        pct = round((recent_median - older_median) / older_median * 100, 1)
+        direction = 'up' if pct >= 3 else ('down' if pct <= -3 else 'flat')
+    else:
+        pct = None
+        direction = 'insufficient'
+
+    return {
+        'pct_change':    pct,
+        'direction':     direction,
+        'recent_median': recent_median,
+        'older_median':  older_median,
+        'recent_count':  len(recent),
+        'older_count':   len(older),
+        'days_covered':  oldest_days,
+    }
 
 
 def _parse_psa_grade_from_title(title: str) -> object:
@@ -511,6 +584,158 @@ def _parse_finding_response(data: dict, operation: str) -> list:
     return items
 
 
+def _search_sold_via_firecrawl(query: str, psa_grade=None, max_results: int = 20) -> dict:
+    """
+    Scrape eBay sold/completed listings via Firecrawl.
+    No rate limit — uses the paid Firecrawl plan.
+    Falls back gracefully if Firecrawl is unavailable.
+    """
+    try:
+        from auction_fetcher import _firecrawl_scrape, firecrawl_available
+    except ImportError:
+        return {'success': False, 'query': query, 'items': [], 'stats': None,
+                'error': 'auction_fetcher not available'}
+
+    if not firecrawl_available():
+        return {'success': False, 'query': query, 'items': [], 'stats': None,
+                'error': 'FIRECRAWL_API_KEY not set'}
+
+    full_query = query.strip()
+    if psa_grade is not None:
+        grade_str = str(int(psa_grade)) if float(psa_grade) == int(psa_grade) else str(psa_grade)
+        full_query = f'{full_query} PSA {grade_str}'
+
+    ebay_query = urllib.parse.quote_plus(full_query)
+    # _sop=13 = sort by most recently sold
+    url = (f'https://www.ebay.com/sch/i.html'
+           f'?_nkw={ebay_query}&LH_Sold=1&LH_Complete=1&_sop=13')
+
+    try:
+        md, fc_err = _firecrawl_scrape(url, wait_ms=3000)
+    except Exception as exc:
+        return {'success': False, 'query': full_query, 'items': [], 'stats': None,
+                'error': f'Firecrawl error: {exc}'}
+
+    if not md:
+        return {'success': False, 'query': full_query, 'items': [], 'stats': None,
+                'error': fc_err or 'Empty Firecrawl response'}
+
+    # Each listing block starts with "Sold Mon DD, YYYY\n\n[Title](itm/...)...$XX"
+    # Split on sold-date lines so we can capture date + listing type per block.
+    block_re   = re.compile(
+        r'Sold\s+([A-Z][a-z]{2}\s+\d{1,2},\s*\d{4})\s*\n\n'
+        r'\[([^\]]{15,150})\]\(https://www\.ebay\.com/itm/(\d+)[^\)]*\)'
+        r'[\s\S]{0,600}?'
+        r'\\?\$(\d[\d,]*\.?\d*)',
+    )
+    items = []
+    seen_item_ids: set = set()
+    for m in block_re.finditer(md):
+        sold_date  = m.group(1).strip()
+        title      = re.sub(r'^New Listing\s*', '', m.group(2), flags=re.IGNORECASE)
+        title      = re.sub(r'Opens in a new (tab or window|window or tab)', '', title).strip()
+        item_id    = m.group(3)
+        price_str  = m.group(4).replace(',', '')
+        if title.startswith('http') or len(title) < 10:
+            continue
+        if item_id in seen_item_ids:
+            continue
+        seen_item_ids.add(item_id)
+        try:
+            price = float(price_str)
+        except ValueError:
+            continue
+        if price <= 0:
+            continue
+        # Detect auction vs BIN: auction blocks contain "N bids"
+        block_text = m.group(0)
+        bids_m = re.search(r'(\d+)\s+bid', block_text, re.IGNORECASE)
+        listing_type = f'Auction ({bids_m.group(1)} bids)' if bids_m else 'Buy It Now'
+        items.append({
+            'title':        title,
+            'price':        price,
+            'currency':     'USD',
+            'sold_date':    sold_date,
+            'listing_type': listing_type,
+            'url':          f'https://www.ebay.com/itm/{item_id}',
+            'condition':    'Unknown',
+            'source':       'firecrawl',
+        })
+        if len(items) >= max_results:
+            break
+
+    stats = _compute_stats([i['price'] for i in items]) if items else None
+    return {
+        'success': True,
+        'query':   full_query,
+        'items':   items,
+        'stats':   stats,
+        'error':   None,
+        'source':  'firecrawl',
+    }
+
+
+def _fetch_graded_comps_bulk_firecrawl(query: str, grades: list) -> dict:
+    """
+    Fetch graded sold comps for multiple PSA grades via a single Firecrawl scrape.
+    Searches "PSA {query}" on eBay sold, then buckets by grade parsed from title.
+    """
+    try:
+        from auction_fetcher import _firecrawl_scrape, firecrawl_available
+    except ImportError:
+        return {'_error': 'auction_fetcher not available'}
+
+    if not firecrawl_available():
+        return {'_error': 'FIRECRAWL_API_KEY not set'}
+
+    ebay_query = urllib.parse.quote_plus(f'PSA {query.strip()}')
+    url = (f'https://www.ebay.com/sch/i.html'
+           f'?_nkw={ebay_query}&LH_Sold=1&LH_Complete=1&_sop=13')
+
+    try:
+        md, fc_err = _firecrawl_scrape(url, wait_ms=3000)
+    except Exception as exc:
+        return {'_error': f'Firecrawl error: {exc}'}
+
+    if not md:
+        return {'_error': fc_err or 'Empty Firecrawl response'}
+
+    pattern = re.compile(
+        r'\[([^\]]{15,120})\]\(https://www\.ebay\.com/itm/(\d+)[^\)]*\)'
+        r'[\s\S]{0,500}?'
+        r'\\?\$(\d[\d,]*\.?\d*)',
+    )
+    grade_pattern = re.compile(r'\bPSA\s+(\d+(?:\.\d+)?)\b', re.IGNORECASE)
+
+    buckets: dict = {int(g): [] for g in grades}
+    seen_ids: set = set()
+    for m in pattern.finditer(md):
+        title     = m.group(1)
+        item_id   = m.group(2)
+        price_str = m.group(3).replace(',', '')
+        if title.startswith('http') or len(title) < 10:
+            continue
+        if item_id in seen_ids:
+            continue
+        seen_ids.add(item_id)
+        try:
+            price = float(price_str)
+        except ValueError:
+            continue
+        if price <= 0:
+            continue
+        gm = grade_pattern.search(title)
+        if not gm:
+            continue
+        g = float(gm.group(1))
+        gi = int(g)
+        if gi in buckets:
+            buckets[gi].append(price)
+
+    result = {g: (_compute_stats(prices) if prices else None) for g, prices in buckets.items()}
+    return result
+
+
 def search_sold_listings(query: str, psa_grade=None, max_results: int = 12) -> dict:
     """
     Search eBay completed/sold listings for a card.
@@ -541,6 +766,12 @@ def search_sold_listings(query: str, psa_grade=None, max_results: int = 12) -> d
     cached = _cache_get(cache_key)
     if cached:
         return cached
+
+    # Try Firecrawl first (no rate limit, uses paid plan)
+    fc_result = _search_sold_via_firecrawl(query, psa_grade, max_results)
+    if fc_result['success'] and fc_result.get('stats'):
+        _cache_set(cache_key, fc_result)
+        return fc_result
 
     params = {
         'keywords': full_query,
@@ -595,7 +826,8 @@ def fetch_training_candidates(query: str, grade: float, max_results: int = 15) -
 
 
 def _fetch_via_browse_api(query: str, grade: float, max_results: int) -> tuple:
-    """Fetch training candidates using the Browse API (high rate limits)."""
+    """Fetch training candidates using the Browse API (high rate limits).
+    Paginates in batches of 50 to support max_results > 50."""
     grade_str  = str(int(grade)) if grade == int(grade) else str(grade)
     full_query = f"{query.strip()} PSA {grade_str}"
     try:
@@ -603,55 +835,77 @@ def _fetch_via_browse_api(query: str, grade: float, max_results: int) -> tuple:
     except Exception as exc:
         return [], f'Could not get Browse API token: {exc}'
 
-    params = urllib.parse.urlencode({
-        'q':     full_query,
-        'limit': str(min(max_results, 50)),
-        'sort':  'newlyListed',
-    })
-    url = f'{_BROWSE_API}?{params}'
-    req = Request(url, headers={
-        'Authorization':            f'Bearer {token}',
-        'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
-    })
-
-    try:
-        with urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-    except HTTPError as exc:
-        err_body = ''
-        try:
-            err_body = exc.read().decode('utf-8', errors='ignore')
-        except Exception:
-            pass
-        return [], f'Browse API error {exc.code}: {err_body[:200]}'
-    except Exception as exc:
-        return [], f'Browse API request failed: {exc}'
-
-    items = data.get('itemSummaries', [])
-    if not items:
-        return [], None
-
+    PAGE_SIZE  = 50
     candidates = []
-    for item in items:
+    offset     = 0
+
+    while len(candidates) < max_results:
+        batch = min(PAGE_SIZE, max_results - len(candidates))
+        params = urllib.parse.urlencode({
+            'q':      full_query,
+            'limit':  str(batch),
+            'offset': str(offset),
+            'sort':   'newlyListed',
+        })
+        url = f'{_BROWSE_API}?{params}'
+        req = Request(url, headers={
+            'Authorization':            f'Bearer {token}',
+            'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+        })
+
         try:
-            title       = item.get('title', '')
-            listing_url = item.get('itemWebUrl', '')
-            image_url   = item.get('image', {}).get('imageUrl', '')
-            # Upgrade thumbnail to full size (s-l225 or s-l140 → s-l1600)
-            for thumb_size in ('s-l140', 's-l225', 's-l300', 's-l500'):
-                if thumb_size in image_url:
-                    image_url = image_url.replace(thumb_size, 's-l1600')
-                    break
-            if not image_url:
+            with urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+        except HTTPError as exc:
+            err_body = ''
+            try:
+                err_body = exc.read().decode('utf-8', errors='ignore')
+            except Exception:
+                pass
+            return candidates, f'Browse API error {exc.code}: {err_body[:200]}'
+        except Exception as exc:
+            return candidates, f'Browse API request failed: {exc}'
+
+        items = data.get('itemSummaries', [])
+        if not items:
+            break  # no more results
+
+        for item in items:
+            try:
+                title            = item.get('title', '')
+                listing_url      = item.get('itemWebUrl', '')
+                additional_imgs  = item.get('additionalImages', [])
+
+                # Skip listings with no additional photos — can't get front+back
+                if not additional_imgs:
+                    continue
+
+                def _upgrade(url):
+                    for t in ('s-l140', 's-l225', 's-l300', 's-l500'):
+                        if t in url:
+                            return url.replace(t, 's-l1600')
+                    return url
+
+                front_url = _upgrade(item.get('image', {}).get('imageUrl', ''))
+                back_url  = _upgrade(additional_imgs[0].get('imageUrl', ''))
+
+                if not front_url or not back_url:
+                    continue
+
+                candidates.append({
+                    'title':       title,
+                    'image_url':   front_url,
+                    'back_url':    back_url,
+                    'grade':       grade,
+                    'listing_url': listing_url,
+                })
+            except Exception:
                 continue
-            candidates.append({
-                'title':       title,
-                'image_url':   image_url,
-                'grade':       grade,
-                'listing_url': listing_url,
-            })
-        except Exception:
-            continue
+
+        offset += len(items)
+        if len(items) < batch:
+            break  # fewer results than requested — no more pages
+
     return candidates, None
 
 
@@ -714,38 +968,36 @@ def _fetch_via_finding_api(query: str, grade: float, max_results: int) -> tuple:
     return candidates, None
 
 
-def search_active_listings(query: str, max_results: int = 20) -> dict:
+def search_active_listings(query: str, max_results: int = 20, listing_type: str = '') -> dict:
     """
     Search eBay ACTIVE listings for a card.
     Uses Browse API (5M calls/day) when EBAY_CLIENT_SECRET is set,
     falls back to Finding API (5K calls/day) otherwise.
+
+    listing_type: 'FIXED_PRICE', 'AUCTION', or '' for both
     """
     if not query.strip():
         return {'success': False, 'query': query, 'items': [], 'error': 'Empty search query'}
 
     if _get_client_secret():
-        return _active_via_browse_api(query, max_results)
+        return _active_via_browse_api(query, max_results, listing_type=listing_type)
     return _active_via_finding_api(query, max_results)
 
 
-def _active_via_browse_api(query: str, max_results: int) -> dict:
-    """Fetch active listings via Browse API (5M calls/day)."""
-    try:
-        token = _get_browse_token()
-    except Exception as exc:
-        return {'success': False, 'query': query, 'items': [], 'error': f'Browse API token error: {exc}'}
-
-    params = urllib.parse.urlencode({
+def _browse_api_search(token: str, query: str, max_results: int, listing_type: str = ''):
+    """Single eBay Browse API call. Returns (items_list, error_str_or_None)."""
+    p = {
         'q':     query.strip(),
         'limit': str(min(max_results, 50)),
-        'sort':  'price',
-    })
+    }
+    if listing_type in ('FIXED_PRICE', 'AUCTION'):
+        p['filter'] = f'buyingOptions:{{{listing_type}}}'
+    params = urllib.parse.urlencode(p)
     url = f'{_BROWSE_API}?{params}'
     req = Request(url, headers={
         'Authorization':            f'Bearer {token}',
         'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
     })
-
     try:
         with urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read())
@@ -755,9 +1007,9 @@ def _active_via_browse_api(query: str, max_results: int) -> dict:
             body = exc.read().decode('utf-8', errors='ignore')
         except Exception:
             pass
-        return {'success': False, 'query': query, 'items': [], 'error': f'Browse API error {exc.code}: {body[:200]}'}
+        return None, f'Browse API error {exc.code}: {body[:200]}'
     except Exception as exc:
-        return {'success': False, 'query': query, 'items': [], 'error': f'Browse API request failed: {exc}'}
+        return None, f'Browse API request failed: {exc}'
 
     items = []
     for item in data.get('itemSummaries', []):
@@ -784,7 +1036,45 @@ def _active_via_browse_api(query: str, max_results: int) -> dict:
             })
         except Exception:
             continue
-    return {'success': True, 'query': query, 'items': items, 'error': None}
+    return items, None
+
+
+def _active_via_browse_api(query: str, max_results: int, listing_type: str = '') -> dict:
+    """Fetch active listings via Browse API (5M calls/day).
+
+    If the original query returns 0 results, automatically retries with the
+    card number stripped (e.g. '#251' removed) since eBay's search is sensitive
+    to exact card-number formatting.
+    """
+    try:
+        token = _get_browse_token()
+    except Exception as exc:
+        return {'success': False, 'query': query, 'items': [], 'error': f'Browse API token error: {exc}'}
+
+    items, err = _browse_api_search(token, query, max_results, listing_type=listing_type)
+    if err:
+        return {'success': False, 'query': query, 'items': [], 'error': err}
+
+    # If 0 results, retry once with card number (#NNN) stripped
+    fallback_query = None
+    if not items:
+        import re as _re
+        stripped = _re.sub(r'\s*#\d+\b', '', query).strip()
+        if stripped and stripped != query:
+            fallback_query = stripped
+            items, err2 = _browse_api_search(token, stripped, max_results, listing_type=listing_type)
+            if err2:
+                items = []
+
+    # Sort cheapest-first on our side (avoids eBay's price-sort filtering out auctions)
+    items.sort(key=lambda x: x['total_cost'])
+    return {
+        'success':        True,
+        'query':          query,
+        'fallback_query': fallback_query,
+        'items':          items,
+        'error':          None,
+    }
 
 
 def _active_via_finding_api(query: str, max_results: int) -> dict:
@@ -856,6 +1146,12 @@ def _fetch_graded_comps_bulk(query: str, grades: list) -> dict:
     if cached:
         return cached
 
+    # Try Firecrawl first (no rate limit)
+    fc_result = _fetch_graded_comps_bulk_firecrawl(query, grades)
+    if not fc_result.get('_error') and any(fc_result.get(int(g)) for g in grades):
+        _cache_set(cache_key, fc_result)
+        return fc_result
+
     full_query = f'PSA {query.strip()}'
     params = {
         'keywords':                       full_query,
@@ -895,6 +1191,7 @@ def find_deals(
     max_listings: int = 20,
     grading_cost: float = 25.0,
     ebay_fee_pct: float = 0.1325,
+    listing_type: str = '',
 ) -> dict:
     """
     Find good buy opportunities on eBay by comparing active listings to sold comps.
@@ -910,6 +1207,7 @@ def find_deals(
         max_listings:       How many active listings to analyze (max 50)
         grading_cost:       PSA grading cost per card in USD (default $25 = economy tier)
         ebay_fee_pct:       eBay final value fee + payment processing (default 13.25%)
+        listing_type:       'FIXED_PRICE', 'AUCTION', or '' for both
 
     Returns:
         {
@@ -926,7 +1224,7 @@ def find_deals(
         return {'success': False, 'query': query, 'deals': [], 'sold_comps': {}, 'error': 'Empty search query'}
 
     # ---- Fetch active listings ----
-    active = search_active_listings(query, max_results=max_listings)
+    active = search_active_listings(query, max_results=max_listings, listing_type=listing_type)
     if not active['success']:
         return {'success': False, 'query': query, 'deals': [], 'sold_comps': {}, 'error': active['error']}
     if not active['items']:
@@ -935,6 +1233,8 @@ def find_deals(
     grade_levels = [7, 8, 9, 10] if psa_grade_estimate is None else [int(psa_grade_estimate)]
     sold_comps = {}
     sold_comps_error = None
+
+    price_trend = None  # populated in eBay/Firecrawl path below
 
     if _get_ch_key():
         # ---- Card Hedge path: 2 calls, all grades, best quality ----
@@ -976,9 +1276,10 @@ def find_deals(
             _cache_set(scp_cache_key, sold_comps)
     else:
         # ---- eBay fallback: 2 Finding API calls, both cached 6 hrs ----
-        raw_result = search_sold_listings(query, max_results=20)
+        raw_result = search_sold_listings(query, max_results=30)
         sold_comps['raw'] = raw_result.get('stats')
         sold_comps_error = raw_result.get('error')
+        price_trend = _calc_price_trend(raw_result.get('items', []))
 
         graded_bulk = _fetch_graded_comps_bulk(query, grade_levels)
         if graded_bulk.get('_error') and not sold_comps_error:
@@ -1066,9 +1367,11 @@ def find_deals(
     return {
         'success':           True,
         'query':             query,
+        'search_query_used': active.get('fallback_query') or query,
         'deals':             deals,
         'sold_comps':        sold_comps,
         'sold_comps_error':  sold_comps_error,
+        'price_trend':       price_trend,
         'grading_cost':      grading_cost,
         'ebay_fee_pct':      ebay_fee_pct,
         'error':             None,
