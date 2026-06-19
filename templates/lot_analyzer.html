@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lot Analyzer — Card Grading App</title>
+    <title>Lot Analyzer — BBS Cards</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -26,25 +26,30 @@
         header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 28px 30px;
-            text-align: center;
+            padding: 22px 30px 0;
         }
-        header h1 { font-size: 2em; margin-bottom: 6px; }
-        header p  { font-size: 1em; opacity: 0.88; }
+        header h1 { font-size: 1.8em; margin-bottom: 4px; }
+        header p  { font-size: 0.9em; opacity: 0.88; margin-bottom: 14px; }
 
-        nav {
-            background: rgba(255,255,255,0.15);
-            padding: 10px 30px;
+        .site-nav {
             display: flex;
-            gap: 20px;
+            gap: 0;
+            overflow-x: auto;
+            scrollbar-width: none;
         }
-        nav a {
-            color: white;
+        .site-nav::-webkit-scrollbar { display: none; }
+        .site-nav a {
+            color: rgba(255,255,255,0.7);
             text-decoration: none;
-            font-size: 0.9em;
-            opacity: 0.85;
+            padding: 12px 22px;
+            font-size: 0.92em;
+            font-weight: 600;
+            border-bottom: 3px solid transparent;
+            white-space: nowrap;
+            transition: color .2s, border-color .2s, background .2s;
         }
-        nav a:hover { opacity: 1; text-decoration: underline; }
+        .site-nav a:hover { color: #fff; background: rgba(255,255,255,0.08); }
+        .site-nav a.active { color: #fff; border-bottom: 3px solid #fff; background: rgba(255,255,255,0.12); }
 
         .content { padding: 36px; }
 
@@ -285,14 +290,14 @@
 <div class="container">
 
     <header>
-        <h1>🔍 Lot Analyzer</h1>
-        <p>Paste an eBay lot URL to get per-card pricing and a buy / no-buy recommendation</p>
+        <h1>🏆 BBS Cards</h1>
+        <p>AI-Powered Sports Card Tools</p>
+        <nav class="site-nav">
+            <a href="/">Grade Card</a>
+            <a href="/lot-analyzer" class="active">📊 Lot Analyzer</a>
+            <a href="/lot-cataloger">📋 Lot Cataloger</a>
+        </nav>
     </header>
-
-    <nav>
-        <a href="/">🏠 Grader</a>
-        <a href="/lot-analyzer">📦 Lot Analyzer</a>
-    </nav>
 
     <div class="content">
 

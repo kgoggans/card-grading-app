@@ -2364,6 +2364,80 @@ def lot_analyzer_run():
     return render_template('lot_analyzer.html', result=result, error=None)
 
 
+# ---------------------------------------------------------------------------
+# Lot Cataloger routes  (two-phase: Vision identify → human review → price)
+# ---------------------------------------------------------------------------
+try:
+    from lot_cataloger import identify_lot_stream, price_confirmed_cards, clear_cache
+    from flask import stream_with_context, Response as _FlaskResponse
+    _LOT_CATALOGER_AVAILABLE = True
+except ImportError:
+    _LOT_CATALOGER_AVAILABLE = False
+
+
+@app.route('/lot-cataloger', methods=['GET'])
+def lot_cataloger_page():
+    """Render the two-phase lot cataloger UI."""
+    return render_template('lot_cataloger.html')
+
+
+@app.route('/lot-cataloger/identify-stream')
+def lot_cataloger_identify_stream():
+    """SSE stream: Vision identifies cards image by image, sends each as an event."""
+    if not _LOT_CATALOGER_AVAILABLE:
+        return jsonify({'error': 'lot_cataloger.py not found'}), 500
+
+    url = request.args.get('url', '').strip()
+    if not url:
+        return jsonify({'error': 'url parameter is required'}), 400
+
+    def generate():
+        for chunk in identify_lot_stream(url):
+            yield chunk
+
+    return _FlaskResponse(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control':     'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection':        'keep-alive',
+        },
+    )
+
+
+@app.route('/lot-cataloger/price', methods=['POST'])
+def lot_cataloger_price():
+    """Price a user-confirmed card list. Accepts JSON body: {cards, asking_price}."""
+    if not _LOT_CATALOGER_AVAILABLE:
+        return jsonify({'success': False, 'error': 'lot_cataloger.py not found'}), 500
+
+    data         = request.get_json(silent=True) or {}
+    cards        = data.get('cards', [])
+    asking_price = float(data.get('asking_price') or 0)
+
+    if not cards:
+        return jsonify({'success': False, 'error': 'No cards provided'}), 400
+
+    try:
+        result = price_confirmed_cards(cards, asking_price)
+        return jsonify({'success': True, **result})
+    except Exception as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 500
+
+
+@app.route('/lot-cataloger/clear-cache', methods=['POST'])
+def lot_cataloger_clear_cache():
+    """Delete cached Vision results for a given eBay item ID."""
+    if not _LOT_CATALOGER_AVAILABLE:
+        return jsonify({'success': False}), 500
+    data    = request.get_json(silent=True) or {}
+    item_id = data.get('item_id', '').strip()
+    if item_id:
+        clear_cache(item_id)
+    return jsonify({'success': True})
+
+
 if __name__ == '__main__':
     # Debug mode should only be enabled in development
     # Set FLASK_ENV=production in production environments

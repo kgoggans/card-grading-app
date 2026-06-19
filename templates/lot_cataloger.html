@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lot Cataloger — BBS Cards</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
+         background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+         min-height:100vh;padding:20px}
+    .container{max-width:1200px;margin:0 auto;background:#fff;
+               border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}
+
+    /* ── Site nav ── */
+    header{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:22px 30px 0}
+    header h1{font-size:1.8em;margin-bottom:4px}
+    header p{font-size:.9em;opacity:.85;margin-bottom:14px}
+    .site-nav{display:flex;gap:0;overflow-x:auto;scrollbar-width:none}
+    .site-nav::-webkit-scrollbar{display:none}
+    .site-nav a{color:rgba(255,255,255,.7);text-decoration:none;padding:12px 22px;
+                font-size:.92em;font-weight:600;border-bottom:3px solid transparent;
+                white-space:nowrap;transition:color .2s,border-color .2s,background .2s}
+    .site-nav a:hover{color:#fff;background:rgba(255,255,255,.08)}
+    .site-nav a.active{color:#fff;border-bottom:3px solid #fff;background:rgba(255,255,255,.12)}
+
+    /* ── Content area ── */
+    .content{padding:32px}
+
+    /* ── Phase visibility ── */
+    .phase{display:none}
+    .phase.active{display:block}
+
+    /* ── Input phase ── */
+    .input-card{background:#f8f9ff;border:2px solid #667eea;border-radius:14px;padding:28px;margin-bottom:20px}
+    .input-card h2{font-size:1.15em;color:#333;margin-bottom:6px}
+    .input-card p{font-size:.85em;color:#666;margin-bottom:18px}
+    .field-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+    .field-row input{flex:1;min-width:240px;padding:11px 14px;border:2px solid #ddd;
+                     border-radius:10px;font-size:1em;outline:none;transition:border-color .2s}
+    .field-row input:focus{border-color:#667eea}
+    .field-row input.short{flex:0 0 160px;min-width:0}
+    .btn-primary{padding:11px 28px;background:linear-gradient(135deg,#667eea,#764ba2);
+                 color:#fff;border:none;border-radius:10px;font-size:1em;font-weight:600;
+                 cursor:pointer;transition:opacity .2s,transform .1s}
+    .btn-primary:hover{opacity:.9}
+    .btn-primary:active{transform:scale(.98)}
+    .btn-primary:disabled{opacity:.45;cursor:not-allowed}
+    .btn-secondary{padding:9px 20px;background:#f0f2ff;color:#667eea;border:2px solid #667eea;
+                   border-radius:10px;font-size:.9em;font-weight:600;cursor:pointer;transition:background .2s}
+    .btn-secondary:hover{background:#e0e4ff}
+    .btn-danger{padding:6px 12px;background:#fff0f0;color:#c0392b;border:2px solid #e74c3c;
+                border-radius:8px;font-size:.8em;cursor:pointer;transition:background .2s}
+    .btn-danger:hover{background:#ffe0e0}
+    .hint{font-size:.78em;color:#999;margin-top:8px}
+
+    /* ── Lot info bar ── */
+    .lot-bar{background:#f0f2ff;border-radius:10px;padding:14px 18px;margin-bottom:20px;
+             display:flex;gap:24px;flex-wrap:wrap;align-items:center}
+    .lot-bar strong{color:#333}
+    .lot-bar a{color:#667eea;font-size:.85em}
+    .lot-bar .price{font-size:1.1em;font-weight:700;color:#667eea}
+
+    /* ── Progress ── */
+    .progress-wrap{margin-bottom:20px}
+    .progress-bar-outer{background:#e9ecef;border-radius:8px;height:10px;overflow:hidden;margin-bottom:8px}
+    .progress-bar-inner{background:linear-gradient(90deg,#667eea,#764ba2);height:100%;
+                        border-radius:8px;transition:width .4s ease;width:0%}
+    .progress-msg{font-size:.88em;color:#666}
+    .progress-count{font-size:.85em;color:#999;margin-top:4px}
+
+    /* ── Live cards feed ── */
+    .live-feed{margin-bottom:20px}
+    .live-feed h3{font-size:.95em;font-weight:700;color:#333;margin-bottom:10px}
+    .feed-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+    .feed-card{background:#f8f9ff;border:1px solid #e0e4ff;border-radius:10px;
+               padding:8px;font-size:.78em;animation:fadeIn .3s ease}
+    .feed-card img{width:100%;height:100px;object-fit:cover;border-radius:6px;margin-bottom:6px;
+                   background:#ddd}
+    .feed-card .fc-player{font-weight:700;color:#333;margin-bottom:2px;white-space:nowrap;
+                          overflow:hidden;text-overflow:ellipsis}
+    .feed-card .fc-detail{color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .feed-card .fc-badges{margin-top:4px;display:flex;flex-wrap:wrap;gap:3px}
+    .badge{font-size:.68em;font-weight:700;padding:1px 5px;border-radius:4px}
+    .badge-auto  {background:#d4edda;color:#155724}
+    .badge-patch {background:#fde8d8;color:#7a3300}
+    .badge-serial{background:#f3e8ff;color:#4b1683}
+    .badge-rc    {background:#fff0b3;color:#7a5800}
+    .badge-grade {background:#e8eeff;color:#1a1aff}
+
+    .btn-proceed{margin-top:16px;display:none}
+
+    /* ── Review table ── */
+    .review-header{display:flex;justify-content:space-between;align-items:center;
+                   margin-bottom:16px;flex-wrap:wrap;gap:12px}
+    .review-header h2{font-size:1.1em;color:#333}
+    .review-header p{font-size:.83em;color:#666;margin-top:4px}
+    .review-actions-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+    .review-table-wrap{overflow-x:auto;margin-bottom:20px}
+    table.review-tbl{width:100%;border-collapse:collapse;font-size:.83em;min-width:900px}
+    table.review-tbl th{background:#f0f2ff;color:#333;font-weight:700;padding:9px 8px;
+                        text-align:left;border-bottom:2px solid #ddd;white-space:nowrap}
+    table.review-tbl td{padding:7px 6px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+    table.review-tbl tr:hover td{background:#fafbff}
+    table.review-tbl input,table.review-tbl select{
+      width:100%;padding:5px 7px;border:1px solid #ddd;border-radius:6px;
+      font-size:.88em;background:#fff;outline:none}
+    table.review-tbl input:focus,table.review-tbl select:focus{border-color:#667eea}
+    table.review-tbl input[type=checkbox]{width:auto;transform:scale(1.2)}
+    .thumb{width:52px;height:52px;object-fit:cover;border-radius:6px;background:#eee;
+           display:block;cursor:pointer}
+    .thumb-placeholder{width:52px;height:52px;background:#eee;border-radius:6px;
+                       display:flex;align-items:center;justify-content:center;
+                       font-size:.7em;color:#aaa;text-align:center}
+
+    .review-bottom{display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+                   border-top:2px solid #f0f0f0;padding-top:16px;margin-top:8px}
+    .review-bottom label{font-size:.85em;color:#555;font-weight:600}
+    .review-bottom input.asking{width:120px;padding:8px 10px;border:2px solid #ddd;
+                                border-radius:8px;font-size:.95em}
+    .review-bottom input.asking:focus{border-color:#667eea;outline:none}
+    .card-count-badge{background:#667eea;color:#fff;border-radius:20px;
+                      padding:3px 12px;font-size:.82em;font-weight:700}
+
+    /* ── Pricing spinner ── */
+    .pricing-center{text-align:center;padding:60px 20px}
+    .spinner{width:48px;height:48px;border:5px solid #e0e4ff;
+             border-top-color:#667eea;border-radius:50%;
+             animation:spin 1s linear infinite;margin:0 auto 20px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .pricing-center p{color:#666;font-size:.95em}
+    .pricing-center strong{color:#333}
+
+    /* ── Results ── */
+    .signal-box{border-radius:12px;padding:16px 20px;margin-bottom:24px;
+                display:flex;align-items:center;gap:12px;font-size:1em;font-weight:700}
+    .signal-go    {background:#d4edda;color:#155724;border:2px solid #28a745}
+    .signal-caution{background:#fff3cd;color:#856404;border:2px solid #ffc107}
+    .signal-no-go {background:#f8d7da;color:#721c24;border:2px solid #dc3545}
+    .signal-unknown{background:#e2e3e5;color:#383d41;border:2px solid #adb5bd}
+
+    .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+                  gap:14px;margin-bottom:28px}
+    .summary-tile{background:#f8f9ff;border:1px solid #e0e4ff;border-radius:12px;
+                  padding:14px;text-align:center}
+    .summary-tile .val{font-size:1.5em;font-weight:700;color:#667eea;margin-bottom:4px}
+    .summary-tile .lbl{font-size:.75em;color:#888;text-transform:uppercase;letter-spacing:.04em}
+
+    .results-table-wrap{overflow-x:auto;margin-bottom:24px}
+    table.results-tbl{width:100%;border-collapse:collapse;font-size:.83em;min-width:800px}
+    table.results-tbl th{background:#f0f2ff;color:#333;font-weight:700;padding:9px 10px;
+                         text-align:left;border-bottom:2px solid #ddd}
+    table.results-tbl td{padding:8px 10px;border-bottom:1px solid #f0f0f0;vertical-align:top}
+    table.results-tbl tr:hover td{background:#fafbff}
+    .price-val{font-weight:700;color:#333}
+    .sub-row{font-size:.78em;color:#999;margin-top:2px}
+    .no-comp{color:#bbb;font-style:italic}
+    .warn-badge{font-size:.7em;background:#fff3cd;color:#856404;border-radius:4px;
+                padding:1px 5px;margin-left:4px}
+    .uplift{font-size:.75em;color:#1a7a3e;margin-top:2px}
+    .tot-row td{background:#f0f2ff;font-weight:700;border-top:2px solid #667eea}
+
+    .results-actions{display:flex;gap:12px;flex-wrap:wrap}
+
+    /* ── Utility ── */
+    .err-msg{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb;
+             border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:.88em}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+    @media(max-width:600px){
+      .content{padding:16px}
+      .field-row{flex-direction:column}
+      .review-actions-top{flex-direction:column;align-items:flex-start}
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ── Header + Site Nav ── -->
+  <header>
+    <h1>🏆 BBS Cards</h1>
+    <p>AI-Powered Sports Card Tools</p>
+    <nav class="site-nav">
+      <a href="/">Grade Card</a>
+      <a href="/lot-analyzer">Lot Analyzer</a>
+      <a href="/lot-cataloger" class="active">Lot Cataloger</a>
+    </nav>
+  </header>
+
+  <div class="content">
+    <div id="err-global" class="err-msg" style="display:none"></div>
+
+    <!-- ════════════════════════════════════════
+         PHASE 1 — URL INPUT
+         ════════════════════════════════════════ -->
+    <div id="phase-input" class="phase active">
+      <div class="input-card">
+        <h2>📋 Lot Cataloger — Two-Phase Card Identification</h2>
+        <p>
+          Enter an eBay lot URL. Claude Vision will identify every card from the listing photos,
+          then you review and correct the list before eBay searches price each card.
+          Results are cached — re-running the same lot costs zero Vision tokens.
+        </p>
+        <div class="field-row">
+          <input id="url-input" type="text"
+                 placeholder="eBay listing URL or item number (e.g. 123456789012)"
+                 autocomplete="off">
+          <input id="asking-input" type="number" class="short"
+                 placeholder="Asking price ($)" min="0" step="0.01">
+        </div>
+        <button class="btn-primary" id="btn-identify">Identify Cards →</button>
+        <p class="hint">
+          Vision scans all photos in the listing and identifies player, year, set, parallel,
+          auto/patch/serial number, and grade for each card.
+        </p>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════
+         PHASE 2 — IDENTIFYING (streaming)
+         ════════════════════════════════════════ -->
+    <div id="phase-identifying" class="phase">
+      <div id="lot-bar-id" class="lot-bar" style="display:none">
+        <div>
+          <div style="font-size:.8em;color:#888">LISTING</div>
+          <strong id="lot-title-id">—</strong>
+        </div>
+        <div>
+          <div style="font-size:.8em;color:#888">ASKING</div>
+          <span class="price" id="lot-price-id">—</span>
+        </div>
+        <div>
+          <div style="font-size:.8em;color:#888">SELLER</div>
+          <span id="lot-seller-id">—</span>
+        </div>
+        <a id="lot-link-id" href="#" target="_blank" rel="noopener">View on eBay ↗</a>
+      </div>
+
+      <div class="progress-wrap">
+        <div class="progress-bar-outer">
+          <div class="progress-bar-inner" id="prog-bar"></div>
+        </div>
+        <div class="progress-msg" id="prog-msg">Starting…</div>
+        <div class="progress-count" id="prog-count"></div>
+      </div>
+
+      <div class="live-feed" id="live-feed-wrap" style="display:none">
+        <h3>Cards identified so far — <span id="live-count">0</span></h3>
+        <div class="feed-grid" id="feed-grid"></div>
+      </div>
+
+      <button class="btn-primary btn-proceed" id="btn-proceed-review">
+        Review &amp; Edit Cards →
+      </button>
+      <button class="btn-secondary" id="btn-cancel-id" style="margin-top:10px;display:none">
+        Cancel
+      </button>
+    </div>
+
+    <!-- ════════════════════════════════════════
+         PHASE 3 — REVIEW / EDIT
+         ════════════════════════════════════════ -->
+    <div id="phase-review" class="phase">
+      <div class="review-header">
+        <div>
+          <h2>Review Identified Cards</h2>
+          <p>Correct any misidentifications, remove bad rows, add missing cards manually.</p>
+        </div>
+        <div class="review-actions-top">
+          <span class="card-count-badge" id="review-count-badge">0 cards</span>
+          <button class="btn-secondary" id="btn-add-row">+ Add Card</button>
+          <button class="btn-secondary" id="btn-re-identify">↺ Re-Identify</button>
+        </div>
+      </div>
+
+      <div class="review-table-wrap">
+        <table class="review-tbl" id="review-tbl">
+          <thead>
+            <tr>
+              <th style="width:58px">Photo</th>
+              <th style="min-width:130px">Player</th>
+              <th style="width:60px">Year</th>
+              <th style="min-width:100px">Brand / Set</th>
+              <th style="min-width:110px">Parallel</th>
+              <th style="width:60px">Card #</th>
+              <th style="width:50px">Auto</th>
+              <th style="width:50px">Patch</th>
+              <th style="width:80px">Serial #</th>
+              <th style="width:60px">Grader</th>
+              <th style="width:60px">Grade</th>
+              <th style="width:44px"></th>
+            </tr>
+          </thead>
+          <tbody id="review-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="review-bottom">
+        <label for="asking-review">Asking Price ($)</label>
+        <input class="asking" id="asking-review" type="number" min="0" step="0.01"
+               placeholder="e.g. 1099.95">
+        <button class="btn-primary" id="btn-price">Price These Cards →</button>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════
+         PHASE 4 — PRICING SPINNER
+         ════════════════════════════════════════ -->
+    <div id="phase-pricing" class="phase">
+      <div class="pricing-center">
+        <div class="spinner"></div>
+        <p>Running eBay searches on <strong id="pricing-count-lbl">0</strong> confirmed cards…</p>
+        <p style="margin-top:6px;font-size:.8em;color:#aaa">
+          This takes about 30–60 seconds. Do not close this page.
+        </p>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════
+         PHASE 5 — RESULTS
+         ════════════════════════════════════════ -->
+    <div id="phase-results" class="phase">
+      <div id="signal-box" class="signal-box signal-unknown">
+        <span id="signal-text">Calculating…</span>
+      </div>
+
+      <div class="summary-grid">
+        <div class="summary-tile">
+          <div class="val" id="res-asking">—</div>
+          <div class="lbl">Asking Price</div>
+        </div>
+        <div class="summary-tile">
+          <div class="val" id="res-est">—</div>
+          <div class="lbl">Est. Total Value</div>
+        </div>
+        <div class="summary-tile">
+          <div class="val" id="res-extrap">—</div>
+          <div class="lbl">Extrapolated Value</div>
+        </div>
+        <div class="summary-tile">
+          <div class="val" id="res-ratio">—</div>
+          <div class="lbl">Price / Value</div>
+        </div>
+        <div class="summary-tile">
+          <div class="val" id="res-bid">—</div>
+          <div class="lbl">Suggested Max Bid</div>
+        </div>
+      </div>
+
+      <div class="results-table-wrap">
+        <table class="results-tbl">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Card</th>
+              <th>Grader / Grade</th>
+              <th>Lowest BIN</th>
+              <th>Est. Value</th>
+              <th>3 Lowest BINs</th>
+              <th>Graded Comp</th>
+            </tr>
+          </thead>
+          <tbody id="results-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="results-actions">
+        <button class="btn-primary" id="btn-start-over">Analyze Another Lot</button>
+        <button class="btn-secondary" id="btn-back-review">← Back to Review</button>
+        <button class="btn-secondary" id="btn-export-csv">Download CSV</button>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /container -->
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════
+let _cards      = [];   // accumulated during identification
+let _lotMeta    = {};
+let _pricedData = null;
+let _eventSource = null;
+let _itemId     = '';
+
+// ══════════════════════════════════════════════════════════
+//  PHASE SWITCHING
+// ══════════════════════════════════════════════════════════
+function showPhase(id) {
+  document.querySelectorAll('.phase').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function showErr(msg) {
+  const el = document.getElementById('err-global');
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+// ══════════════════════════════════════════════════════════
+//  PHASE 1 → 2: START IDENTIFICATION
+// ══════════════════════════════════════════════════════════
+document.getElementById('btn-identify').addEventListener('click', startIdentification);
+document.getElementById('url-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') startIdentification();
+});
+
+function startIdentification() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) { showErr('Please enter an eBay URL or item number.'); return; }
+  showErr('');
+  _cards = [];
+  _lotMeta = {};
+  _itemId  = '';
+
+  // Copy asking price to review phase
+  const asking = document.getElementById('asking-input').value;
+  document.getElementById('asking-review').value = asking;
+
+  // Reset UI
+  document.getElementById('feed-grid').innerHTML = '';
+  document.getElementById('live-count').textContent = '0';
+  document.getElementById('live-feed-wrap').style.display = 'none';
+  document.getElementById('btn-proceed-review').style.display = 'none';
+  document.getElementById('btn-cancel-id').style.display = 'block';
+  document.getElementById('lot-bar-id').style.display = 'none';
+  setProgress(0, 0, 'Connecting…');
+
+  showPhase('phase-identifying');
+
+  // Close any existing SSE
+  if (_eventSource) { _eventSource.close(); _eventSource = null; }
+
+  const sse = new EventSource('/lot-cataloger/identify-stream?url=' + encodeURIComponent(url));
+  _eventSource = sse;
+
+  sse.onmessage = function(e) {
+    try {
+      const data = JSON.parse(e.data);
+      handleSseEvent(data);
+    } catch(err) {
+      console.error('SSE parse error', err, e.data);
+    }
+  };
+
+  sse.onerror = function() {
+    sse.close();
+    _eventSource = null;
+    if (_cards.length > 0) {
+      // Still got some cards — let user proceed
+      setProgress(100, 100, 'Connection closed early. Showing ' + _cards.length + ' cards found.');
+      showProceedButton();
+    } else {
+      showErr('Connection to server lost. Please try again.');
+      showPhase('phase-input');
+    }
+  };
+}
+
+function handleSseEvent(data) {
+  switch (data.type) {
+
+    case 'lot':
+      _lotMeta = data.lot || {};
+      _itemId  = _lotMeta.item_id || '';
+      const bar = document.getElementById('lot-bar-id');
+      bar.style.display = 'flex';
+      document.getElementById('lot-title-id').textContent  = truncate(_lotMeta.title || '—', 80);
+      document.getElementById('lot-price-id').textContent  = _lotMeta.price ? '$' + Number(_lotMeta.price).toFixed(2) : '—';
+      document.getElementById('lot-seller-id').textContent = _lotMeta.seller || '—';
+      const link = document.getElementById('lot-link-id');
+      if (_lotMeta.item_url) { link.href = _lotMeta.item_url; }
+      break;
+
+    case 'images':
+      if (data.cached) {
+        setProgress(0, 0, '✓ Loaded ' + data.count + ' image(s) from cache — no Vision tokens used.');
+      } else {
+        setProgress(0, data.count, 'Found ' + data.count + ' photo(s) in this listing. Starting Vision…');
+      }
+      document.getElementById('live-feed-wrap').style.display = 'block';
+      break;
+
+    case 'progress':
+      const cur = data.current || 0;
+      const tot = data.total  || 0;
+      setProgress(cur, tot, data.msg || '');
+      break;
+
+    case 'card':
+      if (data.card) {
+        _cards.push(data.card);
+        addFeedCard(data.card, data.image_url);
+        document.getElementById('live-count').textContent = _cards.length;
+        document.getElementById('prog-count').textContent =
+          _cards.length + ' card(s) identified so far';
+      }
+      break;
+
+    case 'done':
+      if (_eventSource) { _eventSource.close(); _eventSource = null; }
+      const suffix = data.cached ? ' (from cache)' : '';
+      setProgress(100, 100,
+        '✅ Identification complete — ' + _cards.length + ' card(s) found' + suffix);
+      document.getElementById('btn-cancel-id').style.display = 'none';
+      showProceedButton();
+      break;
+
+    case 'error':
+      if (_eventSource) { _eventSource.close(); _eventSource = null; }
+      showErr(data.message || 'Unknown error during identification.');
+      showPhase('phase-input');
+      break;
+  }
+}
+
+function setProgress(cur, tot, msg) {
+  const pct = (tot > 0) ? Math.round(cur / tot * 100) : 0;
+  document.getElementById('prog-bar').style.width = pct + '%';
+  document.getElementById('prog-msg').textContent  = msg;
+}
+
+function addFeedCard(card, imgUrl) {
+  const grid = document.getElementById('feed-grid');
+  const div  = document.createElement('div');
+  div.className = 'feed-card';
+
+  const img = document.createElement('img');
+  img.src = imgUrl || '';
+  img.alt = card.player_name || '';
+  img.onerror = () => { img.style.display = 'none'; };
+  div.appendChild(img);
+
+  const player = document.createElement('div');
+  player.className = 'fc-player';
+  player.textContent = card.player_name || '—';
+  div.appendChild(player);
+
+  const detail = document.createElement('div');
+  detail.className = 'fc-detail';
+  detail.textContent = [card.year, card.set_name, card.parallel].filter(Boolean).join(' · ') || '—';
+  div.appendChild(detail);
+
+  const badges = document.createElement('div');
+  badges.className = 'fc-badges';
+  if (card.auto)          badges.innerHTML += '<span class="badge badge-auto">AUTO</span>';
+  if (card.patch)         badges.innerHTML += '<span class="badge badge-patch">PATCH</span>';
+  if (card.serial_number) badges.innerHTML += '<span class="badge badge-serial">/' + card.serial_number + '</span>';
+  if (card.rookie)        badges.innerHTML += '<span class="badge badge-rc">RC</span>';
+  if (card.grader && card.grade)
+    badges.innerHTML += '<span class="badge badge-grade">' + card.grader + ' ' + card.grade + '</span>';
+  div.appendChild(badges);
+
+  grid.appendChild(div);
+}
+
+function showProceedButton() {
+  const btn = document.getElementById('btn-proceed-review');
+  btn.textContent = 'Review ' + _cards.length + ' Card(s) →';
+  btn.style.display = 'inline-block';
+}
+
+document.getElementById('btn-cancel-id').addEventListener('click', () => {
+  if (_eventSource) { _eventSource.close(); _eventSource = null; }
+  showPhase('phase-input');
+});
+
+// ══════════════════════════════════════════════════════════
+//  PHASE 2 → 3: BUILD REVIEW TABLE
+// ══════════════════════════════════════════════════════════
+document.getElementById('btn-proceed-review').addEventListener('click', buildReviewTable);
+
+function buildReviewTable() {
+  const tbody = document.getElementById('review-tbody');
+  tbody.innerHTML = '';
+  _cards.forEach((card, idx) => tbody.appendChild(makeReviewRow(card, idx)));
+  updateReviewCount();
+  showPhase('phase-review');
+}
+
+let _rowId = 0;
+
+function makeReviewRow(card, idx) {
+  const tr  = document.createElement('tr');
+  const rid = 'row-' + (_rowId++);
+  tr.dataset.rid = rid;
+
+  // Thumbnail
+  const tdImg = document.createElement('td');
+  if (card._image_url) {
+    const img = document.createElement('img');
+    img.className = 'thumb';
+    img.src = card._image_url;
+    img.alt = '';
+    img.onerror = () => {
+      img.replaceWith(Object.assign(document.createElement('div'),
+        {className:'thumb-placeholder',textContent:'No photo'}));
+    };
+    img.addEventListener('click', () => window.open(card._image_url, '_blank'));
+    tdImg.appendChild(img);
+  } else {
+    const ph = document.createElement('div');
+    ph.className = 'thumb-placeholder';
+    ph.textContent = 'No photo';
+    tdImg.appendChild(ph);
+  }
+  tr.appendChild(tdImg);
+
+  // Editable text fields
+  const fields = [
+    {key:'player_name', val: card.player_name || ''},
+    {key:'year',        val: card.year || ''},
+    {key:'set_full',    val: [(card.description||'').replace(card.player_name||'','').replace(card.parallel||'','').trim(),
+                               card.set_name||''].filter(Boolean).join(' ').trim().slice(0,60)},
+    {key:'parallel',    val: card.parallel || ''},
+    {key:'card_num',    val: card.card_num || ''},
+  ];
+
+  fields.forEach(f => {
+    const td = document.createElement('td');
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = f.val;
+    inp.dataset.field = f.key;
+    td.appendChild(inp);
+    tr.appendChild(td);
+  });
+
+  // Auto checkbox
+  const tdAuto = document.createElement('td');
+  tdAuto.style.textAlign = 'center';
+  const cbAuto = document.createElement('input');
+  cbAuto.type = 'checkbox';
+  cbAuto.checked = !!card.auto;
+  cbAuto.dataset.field = 'auto';
+  tdAuto.appendChild(cbAuto);
+  tr.appendChild(tdAuto);
+
+  // Patch checkbox
+  const tdPatch = document.createElement('td');
+  tdPatch.style.textAlign = 'center';
+  const cbPatch = document.createElement('input');
+  cbPatch.type = 'checkbox';
+  cbPatch.checked = !!card.patch;
+  cbPatch.dataset.field = 'patch';
+  tdPatch.appendChild(cbPatch);
+  tr.appendChild(tdPatch);
+
+  // Serial
+  const tdSer = document.createElement('td');
+  const inpSer = document.createElement('input');
+  inpSer.type = 'text';
+  inpSer.value = card.serial_number || '';
+  inpSer.placeholder = 'e.g. 31/99';
+  inpSer.dataset.field = 'serial_number';
+  tdSer.appendChild(inpSer);
+  tr.appendChild(tdSer);
+
+  // Grader
+  const tdGrader = document.createElement('td');
+  const selGrader = document.createElement('select');
+  selGrader.dataset.field = 'grader';
+  ['', 'PSA', 'BGS', 'SGC', 'CSG', 'HGA'].forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = opt.textContent = g;
+    if (g === (card.grader || '')) opt.selected = true;
+    selGrader.appendChild(opt);
+  });
+  tdGrader.appendChild(selGrader);
+  tr.appendChild(tdGrader);
+
+  // Grade
+  const tdGrade = document.createElement('td');
+  const inpGrade = document.createElement('input');
+  inpGrade.type = 'text';
+  inpGrade.value = card.grade || '';
+  inpGrade.placeholder = '10';
+  inpGrade.dataset.field = 'grade';
+  tdGrade.appendChild(inpGrade);
+  tr.appendChild(tdGrade);
+
+  // Delete
+  const tdDel = document.createElement('td');
+  const btnDel = document.createElement('button');
+  btnDel.className = 'btn-danger';
+  btnDel.textContent = '✕';
+  btnDel.title = 'Remove this card';
+  btnDel.addEventListener('click', () => {
+    tr.remove();
+    updateReviewCount();
+  });
+  tdDel.appendChild(btnDel);
+  tr.appendChild(tdDel);
+
+  // Store image url on row for later
+  tr.dataset.imageUrl = card._image_url || '';
+
+  return tr;
+}
+
+function updateReviewCount() {
+  const n = document.getElementById('review-tbody').children.length;
+  document.getElementById('review-count-badge').textContent = n + ' card' + (n !== 1 ? 's' : '');
+}
+
+// Add blank row
+document.getElementById('btn-add-row').addEventListener('click', () => {
+  const tbody = document.getElementById('review-tbody');
+  tbody.appendChild(makeReviewRow({}, tbody.children.length));
+  updateReviewCount();
+});
+
+// Re-identify (clear cache and restart)
+document.getElementById('btn-re-identify').addEventListener('click', async () => {
+  if (_itemId) {
+    await fetch('/lot-cataloger/clear-cache', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({item_id: _itemId}),
+    });
+  }
+  _cards = [];
+  showPhase('phase-input');
+});
+
+// ══════════════════════════════════════════════════════════
+//  PHASE 3 → 4 → 5: PRICE CONFIRMED CARDS
+// ══════════════════════════════════════════════════════════
+document.getElementById('btn-price').addEventListener('click', priceCards);
+
+function collectReviewCards() {
+  const rows = document.getElementById('review-tbody').querySelectorAll('tr');
+  const cards = [];
+  rows.forEach(tr => {
+    const get = field => {
+      const el = tr.querySelector(`[data-field="${field}"]`);
+      if (!el) return '';
+      if (el.type === 'checkbox') return el.checked;
+      return el.value.trim();
+    };
+
+    const playerName = get('player_name');
+    if (!playerName) return; // skip blank rows
+
+    // Rebuild description: player + set + parallel
+    const setBrand = get('set_full');
+    const parallel = get('parallel');
+    const auto     = get('auto');
+    const patch    = get('patch');
+    const rookie   = false; // preserve from card object if needed
+
+    let desc = [playerName, setBrand, parallel,
+                auto  ? 'Auto'  : '',
+                patch ? 'Patch' : ''].filter(Boolean).join(' ');
+
+    cards.push({
+      player_name:   playerName,
+      description:   desc,
+      year:          get('year'),
+      card_num:      get('card_num'),
+      grader:        get('grader') || null,
+      grade:         get('grade')  || null,
+      auto:          auto,
+      patch:         patch,
+      serial_number: get('serial_number') || null,
+      parallel:      parallel,
+      _image_url:    tr.dataset.imageUrl || '',
+    });
+  });
+  return cards;
+}
+
+async function priceCards() {
+  showErr('');
+  const cards = collectReviewCards();
+  if (cards.length === 0) {
+    showErr('No cards to price. Add at least one card with a player name.');
+    return;
+  }
+  const asking = parseFloat(document.getElementById('asking-review').value) || 0;
+
+  document.getElementById('pricing-count-lbl').textContent = cards.length;
+  showPhase('phase-pricing');
+
+  try {
+    const resp = await fetch('/lot-cataloger/price', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({cards, asking_price: asking}),
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error || 'Pricing failed');
+    _pricedData = data;
+    renderResults(data);
+    showPhase('phase-results');
+  } catch(err) {
+    showErr('Pricing error: ' + err.message);
+    showPhase('phase-review');
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  RENDER RESULTS
+// ══════════════════════════════════════════════════════════
+function renderResults(data) {
+  const t = data.totals;
+
+  // Signal box
+  const sigBox = document.getElementById('signal-box');
+  sigBox.className = 'signal-box';
+  const code = t.signal_code || 'unknown';
+  if      (code === 'go')      sigBox.classList.add('signal-go');
+  else if (code === 'caution') sigBox.classList.add('signal-caution');
+  else if (code === 'no-go')   sigBox.classList.add('signal-no-go');
+  else                         sigBox.classList.add('signal-unknown');
+  document.getElementById('signal-text').textContent = t.signal || '—';
+
+  // Summary tiles
+  document.getElementById('res-asking').textContent =
+    t.asking_price ? '$' + fmt(t.asking_price) : '—';
+  document.getElementById('res-est').textContent    = '$' + fmt(t.total_est_value);
+  document.getElementById('res-extrap').textContent = '$' + fmt(t.extrapolated_value);
+  document.getElementById('res-ratio').textContent  =
+    t.ratio != null ? Math.round(t.ratio * 100) + '%' : '—';
+  document.getElementById('res-bid').textContent    =
+    t.suggested_max_bid ? '$' + fmt(t.suggested_max_bid) : '—';
+
+  // Card table
+  const tbody = document.getElementById('results-tbody');
+  tbody.innerHTML = '';
+  let totalEst = 0;
+
+  (data.priced_cards || []).forEach((card, i) => {
+    const p   = card.pricing || {};
+    const gc  = p.graded_comp;
+    const ev  = p.est_value;
+    const low = p.lowest;
+    if (ev != null) totalEst += ev;
+
+    const tr = document.createElement('tr');
+
+    // #
+    const tdN = document.createElement('td');
+    tdN.textContent = i + 1;
+    tr.appendChild(tdN);
+
+    // Card name + badges
+    const tdCard = document.createElement('td');
+    const year   = card.year || '';
+    const name   = card.player_name || card.description || '—';
+    const par    = card.parallel ? ' · ' + card.parallel : '';
+    let html = `<strong>${esc(year)} ${esc(name)}</strong>${esc(par)}`;
+    if (card.auto)          html += ' <span class="badge badge-auto">AUTO</span>';
+    if (card.patch)         html += ' <span class="badge badge-patch">PATCH</span>';
+    if (card.serial_number) html += ' <span class="badge badge-serial">/' + esc(card.serial_number) + '</span>';
+    if (card.card_num)      html += `<div class="sub-row">#${esc(card.card_num)}</div>`;
+    tdCard.innerHTML = html;
+    tr.appendChild(tdCard);
+
+    // Grader / grade
+    const tdGr = document.createElement('td');
+    tdGr.textContent = card.grader && card.grade ? card.grader + ' ' + card.grade : 'Raw';
+    tr.appendChild(tdGr);
+
+    // Lowest BIN
+    const tdLow = document.createElement('td');
+    tdLow.innerHTML = low != null
+      ? `<span class="price-val">$${fmt(low)}</span>`
+      : '<span class="no-comp">—</span>';
+    tr.appendChild(tdLow);
+
+    // Est. value
+    const tdEv = document.createElement('td');
+    if (ev != null) {
+      let evHtml = `<span class="price-val">$${fmt(ev)}</span>`;
+      if (p.unreliable) evHtml += ' <span class="warn-badge">⚠ Wide spread</span>';
+      tdEv.innerHTML = evHtml;
+    } else {
+      tdEv.innerHTML = '<span class="no-comp">No comps</span>';
+    }
+    tr.appendChild(tdEv);
+
+    // 3 lowest
+    const tdThree = document.createElement('td');
+    const three = (p.three_lowest || []).map(v => '$' + fmt(v)).join(' · ');
+    tdThree.innerHTML = `<span class="sub-row">${three || '—'}</span>`;
+    tr.appendChild(tdThree);
+
+    // Graded comp
+    const tdGc = document.createElement('td');
+    if (card.grader && card.grade) {
+      tdGc.innerHTML = '<span style="color:#aaa">Already graded</span>';
+    } else if (gc && gc.est_value != null) {
+      let gcHtml = `<span class="price-val">$${fmt(gc.est_value)}</span>`;
+      if (ev != null && gc.est_value > ev) {
+        const uplift = Math.round((gc.est_value - ev) / ev * 100);
+        gcHtml += `<div class="uplift">+${uplift}% if graded</div>`;
+      }
+      tdGc.innerHTML = gcHtml;
+    } else {
+      tdGc.innerHTML = '<span class="no-comp">—</span>';
+    }
+    tr.appendChild(tdGc);
+
+    tbody.appendChild(tr);
+  });
+
+  // Totals row
+  const tftr = document.createElement('tr');
+  tftr.className = 'tot-row';
+  tftr.innerHTML = `<td colspan="4" style="text-align:right">TOTAL EST. VALUE</td>
+    <td><span class="price-val">$${fmt(totalEst)}</span></td>
+    <td colspan="2"></td>`;
+  tbody.appendChild(tftr);
+}
+
+// ══════════════════════════════════════════════════════════
+//  RESULT ACTION BUTTONS
+// ══════════════════════════════════════════════════════════
+document.getElementById('btn-start-over').addEventListener('click', () => {
+  _cards = []; _lotMeta = {}; _pricedData = null; _itemId = '';
+  document.getElementById('url-input').value = '';
+  document.getElementById('asking-input').value = '';
+  showErr('');
+  showPhase('phase-input');
+});
+
+document.getElementById('btn-back-review').addEventListener('click', () => {
+  showPhase('phase-review');
+});
+
+document.getElementById('btn-export-csv').addEventListener('click', exportCsv);
+
+function exportCsv() {
+  if (!_pricedData) return;
+  const rows = [
+    ['#','Player','Year','Parallel','Card #','Grader','Grade','Auto','Patch','Serial #',
+     'Lowest BIN','Est. Value','3 Lowest BINs','Graded Comp Est.'],
+  ];
+  (_pricedData.priced_cards || []).forEach((card, i) => {
+    const p  = card.pricing || {};
+    const gc = p.graded_comp;
+    rows.push([
+      i + 1,
+      card.player_name || '',
+      card.year || '',
+      card.parallel || '',
+      card.card_num || '',
+      card.grader || '',
+      card.grade || '',
+      card.auto  ? 'Yes' : 'No',
+      card.patch ? 'Yes' : 'No',
+      card.serial_number || '',
+      p.lowest    != null ? p.lowest    : '',
+      p.est_value != null ? p.est_value : '',
+      (p.three_lowest || []).join(' | '),
+      gc && gc.est_value != null ? gc.est_value : '',
+    ]);
+  });
+  const t = _pricedData.totals || {};
+  rows.push([]);
+  rows.push(['SUMMARY']);
+  rows.push(['Total Cards', t.total_cards]);
+  rows.push(['Cards Priced', t.priced_count]);
+  rows.push(['Total Est. Value', t.total_est_value]);
+  rows.push(['Extrapolated Value', t.extrapolated_value]);
+  rows.push(['Asking Price', t.asking_price]);
+  rows.push(['Signal', t.signal]);
+
+  const csv   = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
+  const blob  = new Blob([csv], {type: 'text/csv'});
+  const a     = document.createElement('a');
+  a.href      = URL.createObjectURL(blob);
+  a.download  = 'lot_catalog_' + (_itemId || 'export') + '.csv';
+  a.click();
+}
+
+// ══════════════════════════════════════════════════════════
+//  UTILITIES
+// ══════════════════════════════════════════════════════════
+function fmt(n) {
+  return Number(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function truncate(s, n) {
+  return s.length > n ? s.slice(0, n) + '…' : s;
+}
+</script>
+</body>
+</html>

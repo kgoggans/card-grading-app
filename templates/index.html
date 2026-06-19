@@ -479,10 +479,12 @@
 
         <!-- TAB NAVIGATION -->
         <nav class="tab-bar" role="tablist">
-            <button class="tab-btn active" data-tab="tab-grade" role="tab">Grade</button>
+            <button class="tab-btn active" data-tab="tab-grade" role="tab">Grade Card</button>
             <button class="tab-btn" data-tab="tab-dealfinder" role="tab">Deal Finder</button>
-            <button class="tab-btn" data-tab="tab-rawopps" role="tab">Raw Grading Opportunities</button>
+            <button class="tab-btn" data-tab="tab-rawopps" role="tab">Raw Grading Opps</button>
             <button class="tab-btn" data-tab="tab-training" role="tab">Training</button>
+            <button class="tab-btn" data-tab="external" data-href="/lot-analyzer" role="tab">📊 Lot Analyzer</button>
+            <button class="tab-btn" data-tab="external" data-href="/lot-cataloger" role="tab">📋 Lot Cataloger</button>
         </nav>
 
         <!-- SHARED UTILITY BAR (visible on all tabs) -->
@@ -2752,7 +2754,14 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+                btn.addEventListener('click', () => {
+                    // External-link tabs navigate to a separate page
+                    if (btn.dataset.href) {
+                        window.location.href = btn.dataset.href;
+                        return;
+                    }
+                    switchTab(btn.dataset.tab);
+                });
             });
             const saved = sessionStorage.getItem('activeTab');
             if (saved && document.getElementById(saved)) {
