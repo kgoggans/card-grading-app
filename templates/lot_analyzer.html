@@ -244,8 +244,18 @@
         .badge-text   { font-size: 0.7em; background: #f0f0f0; color: #888;
                         border-radius: 4px; padding: 2px 6px; margin-left: 4px; }
         .badge-warn   { font-size: 0.7em; background: #fff3cd; color: #856404;
+                        border-radius: 4px; padding: 2px 6px; margin-left: 4px; }
+        .badge-auto   { font-size: 0.7em; background: #d4edda; color: #155724;
                         border-radius: 4px; padding: 2px 6px; margin-left: 4px;
-                        title: "Wide price spread — est. value uses lowest BIN only"; }
+                        font-weight: 700; }
+        .badge-patch  { font-size: 0.7em; background: #fde8d8; color: #7a3300;
+                        border-radius: 4px; padding: 2px 6px; margin-left: 4px;
+                        font-weight: 700; }
+        .badge-serial { font-size: 0.7em; background: #f3e8ff; color: #4b1683;
+                        border-radius: 4px; padding: 2px 6px; margin-left: 4px;
+                        font-weight: 700; }
+        .badge-rc     { font-size: 0.7em; background: #fff0b3; color: #7a5800;
+                        border-radius: 4px; padding: 2px 6px; margin-left: 4px; }
 
         /* ── Totals row ── */
         .totals-row td {
@@ -405,7 +415,19 @@
                     <td>
                         {% set year = card.year or '' %}
                         {% set desc = card.description or card.raw_line or '' %}
-                        <strong>{{ year }} {{ desc[:50] }}</strong>
+                        <strong>{{ year }} {{ desc[:60] }}</strong>
+                        {% if card.get('auto') %}
+                            <span class="badge-auto">AUTO</span>
+                        {% endif %}
+                        {% if card.get('patch') %}
+                            <span class="badge-patch">PATCH</span>
+                        {% endif %}
+                        {% if card.get('serial_number') %}
+                            <span class="badge-serial">/{{ card.serial_number }}</span>
+                        {% endif %}
+                        {% if card.get('rookie') %}
+                            <span class="badge-rc">RC</span>
+                        {% endif %}
                         {% if card.get('_source') == 'vision' %}
                             <span class="badge-vision">Vision</span>
                         {% else %}

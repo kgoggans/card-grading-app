@@ -197,6 +197,92 @@ def fetch_lot_page_text(item_url: str) -> str:
     except Exception:
         return ''
 
+
+def _extract_ebay_image_urls(html: str) -> list:
+    """
+    Extract all eBay gallery image URLs from raw page HTML.
+
+    eBay embeds listing images as i.ebayimg.com URLs in the HTML.
+    We normalize all to s-l1600 (largest available size).
+    """
+    # Match eBay image CDN URLs
+    pattern = re.compile(
+        r'https?://i\.ebayimg\.com/images/g/[A-Za-z0-9\-_]+/s-l\d+\.(?:jpg|jpeg|png|webp)',
+        re.IGNORECASE,
+    )
+    raw_urls = pattern.findall(html)
+
+    # Also catch URLs in JSON-encoded strings (backslash-escaped slashes)
+    raw_urls += re.findall(
+        r'https?:\\/\\/i\\.ebayimg\\.com\\/images\\/g\\/[A-Za-z0-9\\-_]+\\/s-l\d+\\.(?:jpg|jpeg|png|webp)',
+        html, re.IGNORECASE,
+    )
+
+    normalized, seen = [], set()
+    for url in raw_urls:
+        # Unescape backslash encoding
+        url = url.replace('\\/', '/').replace('\\.', '.')
+        # Upgrade to largest size
+        url = re.sub(r'/s-l\d+\.', '/s-l1600.', url)
+        if url not in seen:
+            seen.add(url)
+            normalized.append(url)
+
+    return normalized
+
+
+def fetch_all_lot_images(item_url: str, browse_images: list) -> list:
+    """
+    Return the COMPLETE gallery image list for an eBay lot listing.
+
+    eBay Browse API only returns ~24 images even for large lots.
+    This fetches the full listing page HTML via Firecrawl and extracts
+    ALL gallery image URLs — essential for lots with 50-200+ photos.
+
+    Args:
+        item_url      : eBay listing URL
+        browse_images : Images already found via Browse API (kept as fallback)
+
+    Returns:
+        Deduplicated list of image URLs (Browse API + page HTML)
+    """
+    key = os.environ.get('FIRECRAWL_API_KEY', '').strip()
+    all_images = list(browse_images)
+    existing   = set(browse_images)
+
+    if not key:
+        return all_images  # no Firecrawl key — use Browse API images only
+
+    payload = {
+        'url':             item_url,
+        'formats':         ['html'],   # raw HTML gives us all embedded image URLs
+        'onlyMainContent': False,      # include the full page, not just article content
+        'timeout':         45_000,
+    }
+    hdr = {
+        'Content-Type':  'application/json',
+        'Authorization': f'Bearer {key}',
+        'User-Agent':    _UA,
+    }
+    try:
+        body = json.dumps(payload).encode()
+        req  = Request(_FIRECRAWL_SCRAPE, data=body, headers=hdr, method='POST')
+        with urlopen(req, timeout=90) as resp:
+            result = json.loads(resp.read().decode('utf-8'))
+        html = result.get('data', {}).get('html', '') or ''
+        if html:
+            page_images = _extract_ebay_image_urls(html)
+            added = 0
+            for img in page_images:
+                if img not in existing:
+                    all_images.append(img)
+                    existing.add(img)
+                    added += 1
+    except Exception:
+        pass  # Fall back to Browse API images
+
+    return all_images
+
 # ── Card extraction from lot text ──────────────────────────────────────────────
 _YEAR_RE     = re.compile(r'\b(19[5-9]\d|20[0-2]\d)\b')
 _GRADE_RE    = re.compile(r'\b(PSA|BGS|SGC|CSG|HGA)\s*(\d+(?:\.\d)?)\b', re.IGNORECASE)
@@ -528,10 +614,16 @@ def analyze_lot(item_id_or_url: str,
             print(f'\nUsing {len(cards)} manually supplied cards.')
 
     elif vision_available() and lot.get('image_urls'):
-        # PRIMARY: Claude Vision reads the lot photos directly
-        _MAX_VISION_IMAGES = 50
+        # PRIMARY: Claude Vision reads the lot photos directly.
+        # IMPORTANT: eBay Browse API only returns ~24 images.
+        # We fetch the full listing HTML to get ALL gallery images first.
+        _MAX_VISION_IMAGES = 200
+        if verbose:
+            print(f'\nFetching full image gallery from listing page...')
+        lot['image_urls'] = fetch_all_lot_images(lot['item_url'], lot['image_urls'])
         if verbose:
             n_imgs = min(len(lot['image_urls']), _MAX_VISION_IMAGES)
+            print(f'  → {len(lot["image_urls"])} image(s) found in gallery')
             print(f'\nIdentifying cards via Claude Vision ({n_imgs} image(s))...')
         vision_cards = identify_cards_from_urls(
             lot['image_urls'],

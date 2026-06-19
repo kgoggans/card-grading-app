@@ -36,30 +36,33 @@ from urllib.request import Request, urlopen
 # ── Constants ──────────────────────────────────────────────────────────────────
 _ANTHROPIC_API  = 'https://api.anthropic.com/v1/messages'
 _API_VERSION    = '2023-06-01'
-# Use haiku for speed/cost; swap to 'claude-sonnet-4-6' for trickier images
-_DEFAULT_MODEL  = 'claude-3-5-haiku-20241022'
-_MAX_TOKENS     = 2048
+# Sonnet gives far better accuracy on lot photos vs haiku (hallucination reduction)
+_DEFAULT_MODEL  = 'claude-sonnet-4-6'
+_MAX_TOKENS     = 4096
 _MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB — Anthropic limit per image
 _UA = 'Mozilla/5.0 CardVision/1.0'
 
 # Empty card skeleton — same schema as card_identifier.identify_card()
-# (with extra grading / parallel fields added)
+# (with extra grading / parallel / auto / patch fields added)
 EMPTY_CARD: dict = {
-    'player_name': None,
-    'year':        None,
-    'manufacturer': None,
-    'set_name':    None,
-    'card_number': None,
-    'parallel':    None,   # extra
-    'grader':      None,   # extra
-    'grade':       None,   # extra
-    'cert_number': None,   # extra
-    'sport':       None,   # extra
-    'team':        None,   # extra
-    'rookie':      False,  # extra
-    'search_query': '',
-    'raw_text':    [],
-    'confidence':  'low',
+    'player_name':   None,
+    'year':          None,
+    'manufacturer':  None,
+    'set_name':      None,
+    'card_number':   None,
+    'parallel':      None,   # extra
+    'grader':        None,   # extra
+    'grade':         None,   # extra
+    'cert_number':   None,   # extra
+    'sport':         None,   # extra
+    'team':          None,   # extra
+    'rookie':        False,  # extra
+    'auto':          False,  # signed/autograph card
+    'patch_relic':   False,  # contains a game-used patch or relic
+    'serial_number': None,   # e.g. "31/99" for serial-numbered cards
+    'search_query':  '',
+    'raw_text':      [],
+    'confidence':    'low',
 }
 
 # ── Single-card prompt ─────────────────────────────────────────────────────────
@@ -76,15 +79,21 @@ Return ONLY a JSON object (no explanation text, no markdown, just the raw JSON):
   "parallel": "Color/parallel variant — e.g. Silver Prizm, Gold, Lazer, Hyper (null if base)",
   "grader": "Grading company if in a slab — PSA, BGS, SGC, CSG (null if raw)",
   "grade": "Numeric grade — e.g. 10, 9.5 (null if raw or ungraded)",
-  "cert_number": "Grading cert number or serial number if visible (null if not visible)",
+  "cert_number": "Grading cert number if in a slab (null if not graded)",
   "sport": "Football, Basketball, Baseball, Hockey, Soccer, etc.",
   "team": "Team name",
-  "rookie": true or false,
+  "rookie": true if this is a rookie card (RC), false otherwise,
+  "auto": true if this card has an on-card autograph or sticker auto, false otherwise,
+  "patch_relic": true if this card contains a game-used patch, jersey, or relic window, false otherwise,
+  "serial_number": "Serial number stamp like 31/99 or 006/250 if visible on the card — null if not serial numbered",
   "search_query": "eBay search string to find this exact card — include year, name, set, grade if graded",
-  "confidence": "high if all key fields certain, medium if 1-2 fields uncertain, low if image unclear"
+  "confidence": "high if all key fields certain, medium if 1-2 fields uncertain, low if image unclear or player name not readable"
 }
 
-Use null for any field you cannot determine. Be precise and concise."""
+IMPORTANT: Only set confidence='high' or 'medium' if you can actually READ the player name on the card.
+If the image is blurry, too small, or the name is not legible, set confidence='low'.
+Never guess a famous player name — if you cannot read it clearly, set player_name=null and confidence='low'.
+Use null for any field you cannot determine."""
 
 # ── Grid-shot prompt ───────────────────────────────────────────────────────────
 _GRID_PROMPT = """You are an expert sports card analyst. This image shows one or more sports cards \
@@ -95,7 +104,7 @@ ordered left-to-right, top-to-bottom. If only one card is visible, return a 1-el
 
 Each object must have exactly these fields:
 {
-  "player_name": "Full name as printed",
+  "player_name": "Full name as printed — ONLY if you can clearly read it on the card",
   "year": "4-digit year",
   "manufacturer": "Brand — e.g. Panini, Topps, Upper Deck, Bowman, Donruss",
   "set_name": "Product — e.g. Prizm, Chrome, Heritage, Select, Mosaic",
@@ -103,15 +112,23 @@ Each object must have exactly these fields:
   "parallel": "Parallel/color variant (null if base)",
   "grader": "PSA, BGS, SGC, CSG, etc. (null if raw)",
   "grade": "Numeric grade e.g. 10 (null if raw)",
-  "cert_number": "Cert/serial number if visible (null otherwise)",
+  "cert_number": "Grading cert number if in a slab (null if not graded)",
   "sport": "Football, Basketball, Baseball, etc.",
   "team": "Team name",
-  "rookie": true or false,
+  "rookie": true if rookie card (RC), false otherwise,
+  "auto": true if the card has an autograph (on-card or sticker), false otherwise,
+  "patch_relic": true if card contains a game-used patch, jersey, or relic window, false otherwise,
+  "serial_number": "Serial stamp like 31/99 or 006/250 if visible — null if not serial numbered",
   "search_query": "eBay search string for finding this exact card",
   "confidence": "high / medium / low"
 }
 
-Use null for fields you cannot determine. Identify every card you can see, even partially."""
+CRITICAL RULES:
+- Set confidence='low' if the player name is not clearly readable in the image
+- NEVER guess or assume a player name — only report what you can actually read on the card
+- If a card is too small or blurry to read clearly, still include it but set player_name=null and confidence='low'
+- Use null for fields you cannot determine with certainty
+- Do NOT hallucinate famous players — only report what the card actually shows"""
 
 
 # ── Core API call ──────────────────────────────────────────────────────────────
@@ -237,12 +254,15 @@ def _normalise_card(raw: dict) -> dict:
         if key in raw and raw[key] is not None:
             card[key] = raw[key]
     # Normalise types
-    card['rookie']     = bool(card.get('rookie', False))
-    card['grade']      = str(card['grade']) if card.get('grade') is not None else None
-    card['year']       = str(card['year'])  if card.get('year')  is not None else None
-    card['card_number'] = str(card['card_number']) if card.get('card_number') is not None else None
+    card['rookie']       = bool(card.get('rookie', False))
+    card['auto']         = bool(card.get('auto', False))
+    card['patch_relic']  = bool(card.get('patch_relic', False))
+    card['grade']        = str(card['grade'])       if card.get('grade')       is not None else None
+    card['year']         = str(card['year'])        if card.get('year')        is not None else None
+    card['card_number']  = str(card['card_number']) if card.get('card_number') is not None else None
+    card['serial_number']= str(card['serial_number']) if card.get('serial_number') is not None else None
     # raw_text: store the original JSON for traceability
-    card['raw_text']   = [json.dumps(raw)]
+    card['raw_text']     = [json.dumps(raw)]
     return card
 
 
@@ -347,14 +367,21 @@ def identify_cards_from_urls(
             for card in cards:
                 if card.get('error'):
                     continue
-                # Deduplicate by (player, year, card_number)
+                # Skip low-confidence cards with no player name — likely hallucination
+                # or an unreadable overview/collage image
+                confidence = card.get('confidence', 'low')
+                player = (card.get('player_name') or '').strip()
+                if confidence == 'low' and not player:
+                    continue
+                if not player:
+                    continue  # no name = nothing to search for
+                # Deduplicate by (player, year, card_number, serial)
                 key = (
-                    (card.get('player_name') or '').lower(),
+                    player.lower(),
                     card.get('year') or '',
                     card.get('card_number') or '',
+                    card.get('serial_number') or '',
                 )
-                if key == ('', '', ''):
-                    continue  # skip blank results
                 if key not in seen_keys:
                     seen_keys.add(key)
                     all_cards.append(card)
@@ -364,7 +391,7 @@ def identify_cards_from_urls(
         except Exception as exc:
             if verbose:
                 print(f'ERROR: {exc}')
-        time.sleep(0.5)  # gentle pacing
+        time.sleep(0.3)  # gentle pacing
 
     return all_cards
 
@@ -376,34 +403,49 @@ def card_to_lot_format(card: dict) -> dict:
 
     lot_analyzer uses: description, year, card_num, grader, grade, raw_line
     card_vision uses:  player_name, year, card_number, grader, grade, set_name, etc.
+
+    Description order: player name first (most important for eBay search),
+    then brand/set/parallel, then attribute flags (Auto, Patch, RC).
     """
     parts = []
+    # Player name first — most critical for search accuracy
+    if card.get('player_name'):
+        parts.append(card['player_name'])
     if card.get('manufacturer'):
         parts.append(card['manufacturer'])
     if card.get('set_name'):
         parts.append(card['set_name'])
     if card.get('parallel'):
         parts.append(card['parallel'])
-    if card.get('player_name'):
-        parts.append(card['player_name'])
+    # Attribute flags
+    if card.get('auto'):
+        parts.append('Auto')
+    if card.get('patch_relic'):
+        parts.append('Patch')
     if card.get('rookie'):
         parts.append('RC')
 
     description = ' '.join(p for p in parts if p)
 
     return {
-        'raw_line':    card.get('search_query', description),
-        'description': description,
-        'year':        card.get('year'),
-        'card_num':    card.get('card_number'),
-        'grader':      card.get('grader'),
-        'grade':       card.get('grade'),
-        # Keep extra fields for reference
-        'player_name': card.get('player_name'),
-        'set_name':    card.get('set_name'),
-        'parallel':    card.get('parallel'),
-        'confidence':  card.get('confidence', 'low'),
-        '_source':     'vision',
+        'raw_line':      card.get('search_query', description),
+        'description':   description,
+        'year':          card.get('year'),
+        'card_num':      card.get('card_number'),
+        'grader':        card.get('grader'),
+        'grade':         card.get('grade'),
+        # Extra attributes
+        'player_name':   card.get('player_name'),
+        'set_name':      card.get('set_name'),
+        'parallel':      card.get('parallel'),
+        'auto':          card.get('auto', False),
+        'patch':         card.get('patch_relic', False),
+        'serial_number': card.get('serial_number'),
+        'sport':         card.get('sport'),
+        'team':          card.get('team'),
+        'rookie':        card.get('rookie', False),
+        'confidence':    card.get('confidence', 'low'),
+        '_source':       'vision',
     }
 
 
