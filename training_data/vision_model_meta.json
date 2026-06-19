@@ -1,0 +1,9 @@
+{
+  "n_samples": 8672,
+  "n_pairs": 4336,
+  "train_mae": 0.874,
+  "grade_accuracy_pct": 45.5,
+  "epochs": 5,
+  "device": "mps",
+  "trained_at": "2026-03-30T17:11:34.974365"
+}

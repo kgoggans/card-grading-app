@@ -1,7 +1,7 @@
 {
-  "n_samples": 4665,
-  "train_mae": 0.896,
-  "cv_mae": 0.957,
-  "grade_accuracy_pct": 48.5,
-  "trained_at": "2026-03-31T02:04:19.127204"
+  "n_samples": 4831,
+  "train_mae": 0.919,
+  "cv_mae": 0.955,
+  "grade_accuracy_pct": 52.5,
+  "trained_at": "2026-04-01T23:05:07.196511"
 }
