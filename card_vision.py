@@ -60,6 +60,7 @@ EMPTY_CARD: dict = {
     'auto':          False,  # signed/autograph card
     'patch_relic':   False,  # contains a game-used patch or relic
     'serial_number': None,   # e.g. "31/99" for serial-numbered cards
+    'bbox':          None,   # [x1,y1,x2,y2] as % of image (0–100); null for single-card photos
     'search_query':  '',
     'raw_text':      [],
     'confidence':    'low',
@@ -119,9 +120,15 @@ Each object must have exactly these fields:
   "auto": true if the card has an autograph (on-card or sticker), false otherwise,
   "patch_relic": true if card contains a game-used patch, jersey, or relic window, false otherwise,
   "serial_number": "Serial stamp like 31/99 or 006/250 if visible — null if not serial numbered",
+  "bbox": [x1, y1, x2, y2],
   "search_query": "eBay search string for finding this exact card",
   "confidence": "high / medium / low"
 }
+
+The bbox field is the bounding box of THIS card as percentages (0–100) of the full image:
+  x1,y1 = top-left corner; x2,y2 = bottom-right corner.
+  Example: a card in the upper-left quarter would be [0, 0, 50, 50].
+  If only one card is in the image, use [0, 0, 100, 100].
 
 CRITICAL RULES:
 - Set confidence='low' if the player name is not clearly readable in the image
@@ -261,6 +268,18 @@ def _normalise_card(raw: dict) -> dict:
     card['year']         = str(card['year'])        if card.get('year')        is not None else None
     card['card_number']  = str(card['card_number']) if card.get('card_number') is not None else None
     card['serial_number']= str(card['serial_number']) if card.get('serial_number') is not None else None
+    # Validate bbox: must be a list of 4 numbers, each 0–100
+    bbox = raw.get('bbox')
+    if (isinstance(bbox, (list, tuple)) and len(bbox) == 4
+            and all(isinstance(v, (int, float)) for v in bbox)):
+        x1, y1, x2, y2 = [float(v) for v in bbox]
+        # Only keep if it describes a real sub-region (not the whole image)
+        if x2 > x1 and y2 > y1 and not (x1 == 0 and y1 == 0 and x2 >= 99 and y2 >= 99):
+            card['bbox'] = [round(x1, 1), round(y1, 1), round(x2, 1), round(y2, 1)]
+        else:
+            card['bbox'] = None
+    else:
+        card['bbox'] = None
     # raw_text: store the original JSON for traceability
     card['raw_text']     = [json.dumps(raw)]
     return card
@@ -445,6 +464,7 @@ def card_to_lot_format(card: dict) -> dict:
         'team':          card.get('team'),
         'rookie':        card.get('rookie', False),
         'confidence':    card.get('confidence', 'low'),
+        'bbox':          card.get('bbox'),   # [x1,y1,x2,y2] percentages for crop thumbnail
         '_source':       'vision',
     }
 

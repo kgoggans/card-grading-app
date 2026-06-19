@@ -200,22 +200,48 @@ def fetch_lot_page_text(item_url: str) -> str:
 
 def _extract_ebay_image_urls(html: str) -> list:
     """
-    Extract all eBay gallery image URLs from raw page HTML.
+    Extract only the LISTING GALLERY image URLs from raw eBay page HTML.
 
-    eBay embeds listing images as i.ebayimg.com URLs in the HTML.
-    We normalize all to s-l1600 (largest available size).
+    eBay embeds listing images as i.ebayimg.com URLs in the HTML, but the
+    full page also contains images from "Similar items", sponsored listings,
+    "You might also like", and other recommendations — none of which belong
+    to the lot being analyzed.
+
+    We truncate the HTML at the first sidebar/recommendation section header
+    before running the URL regex, so only photos the seller uploaded are returned.
+    We normalize all URLs to s-l1600 (largest available size).
     """
-    # Match eBay image CDN URLs
+    # Cut HTML at the first "similar items" / sponsored section to avoid
+    # pulling in images from other sellers' listings or eBay ads.
+    _CUTOFF_MARKERS = [
+        'Similar sponsored items',
+        'You might also like',
+        'People who viewed this item also viewed',
+        'Explore related items',
+        'More to explore',
+        'Related sponsored items',
+        'Sponsored items based on your recent',
+        '"sectionType":"RECOMMENDED"',
+        '"sectionType":"SIMILAR"',
+    ]
+    content = html
+    for marker in _CUTOFF_MARKERS:
+        idx = html.find(marker)
+        if 0 < idx < len(html):
+            content = html[:idx]
+            break
+
+    # Match eBay image CDN URLs within the truncated (listing-only) content
     pattern = re.compile(
         r'https?://i\.ebayimg\.com/images/g/[A-Za-z0-9\-_]+/s-l\d+\.(?:jpg|jpeg|png|webp)',
         re.IGNORECASE,
     )
-    raw_urls = pattern.findall(html)
+    raw_urls = pattern.findall(content)
 
     # Also catch URLs in JSON-encoded strings (backslash-escaped slashes)
     raw_urls += re.findall(
         r'https?:\\/\\/i\\.ebayimg\\.com\\/images\\/g\\/[A-Za-z0-9\\-_]+\\/s-l\d+\\.(?:jpg|jpeg|png|webp)',
-        html, re.IGNORECASE,
+        content, re.IGNORECASE,
     )
 
     normalized, seen = [], set()
