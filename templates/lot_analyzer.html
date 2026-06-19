@@ -243,6 +243,9 @@
                         border-radius: 4px; padding: 2px 6px; margin-left: 4px; }
         .badge-text   { font-size: 0.7em; background: #f0f0f0; color: #888;
                         border-radius: 4px; padding: 2px 6px; margin-left: 4px; }
+        .badge-warn   { font-size: 0.7em; background: #fff3cd; color: #856404;
+                        border-radius: 4px; padding: 2px 6px; margin-left: 4px;
+                        title: "Wide price spread — est. value uses lowest BIN only"; }
 
         /* ── Totals row ── */
         .totals-row td {
@@ -386,11 +389,12 @@
                         <th>Card</th>
                         <th>Grade</th>
                         <th>Lowest BIN</th>
-                        <th>Est. Value</th>
-                        <th>3 Lowest Active</th>
-                        <th>3 Highest Active</th>
+                        <th>Est. Value <small style="font-weight:400;opacity:0.8">(raw)</small></th>
+                        <th>3 Lowest Raw</th>
+                        <th>3 Highest Raw</th>
+                        <th>Graded Comp <small style="font-weight:400;opacity:0.8">(if slabbed)</small></th>
                         <th>Listings</th>
-                        <th>Confidence</th>
+                        <th>Conf.</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -428,6 +432,9 @@
                     <td class="price-col">
                         {% if p.est_value is not none %}
                             ${{ "%.2f"|format(p.est_value) }}
+                            {% if p.get('unreliable') %}
+                                <span class="badge-warn" title="Wide price spread — using lowest BIN only">⚠ Wide spread</span>
+                            {% endif %}
                         {% else %}
                             <span class="no-comps">No comps</span>
                         {% endif %}
@@ -450,6 +457,25 @@
                             <span class="no-comps">—</span>
                         {% endif %}
                     </td>
+                    {# Graded comp column — only meaningful for raw cards #}
+                    <td>
+                        {% if card.grader and card.grade %}
+                            <span class="no-comps" title="Already graded">—</span>
+                        {% elif p.graded_comp and p.graded_comp.est_value is not none %}
+                            <span class="price-col">${{ "%.2f"|format(p.graded_comp.est_value) }}</span>
+                            <div class="sub-prices">
+                                {% for v in p.graded_comp.three_lowest %}${{ "%.2f"|format(v) }}{% if not loop.last %} · {% endif %}{% endfor %}
+                            </div>
+                            {% if p.graded_comp.est_value and p.est_value %}
+                                {% set uplift = ((p.graded_comp.est_value - p.est_value) / p.est_value * 100)|round|int %}
+                                {% if uplift > 0 %}
+                                    <div style="font-size:0.75em;color:#1a7a3e;margin-top:2px">+{{ uplift }}% if graded</div>
+                                {% endif %}
+                            {% endif %}
+                        {% else %}
+                            <span class="no-comps">—</span>
+                        {% endif %}
+                    </td>
                     <td>{{ p.count or 0 }}</td>
                     <td>
                         {% set conf = card.get('confidence', '') %}
@@ -460,8 +486,8 @@
 
                 <!-- Totals row -->
                 <tr class="totals-row">
-                    <td colspan="4" style="text-align:right">Total estimated value:</td>
-                    <td colspan="5">${{ "{:,.2f}".format(totals.total_est_value) }}
+                    <td colspan="4" style="text-align:right">Total estimated raw value:</td>
+                    <td colspan="6">${{ "{:,.2f}".format(totals.total_est_value) }}
                         {% if totals.total_cards > totals.priced_count %}
                             &nbsp;<small style="color:#888">({{ totals.priced_count }}/{{ totals.total_cards }} priced)</small>
                         {% endif %}

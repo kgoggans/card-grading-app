@@ -210,19 +210,49 @@ _SKIP_WORDS = {
     'sold by', 'ships from', 'top rated',
 }
 
+def _clean_markdown(text: str) -> str:
+    """
+    Strip Firecrawl markdown artifacts so card text is clean for parsing.
+
+    Handles:
+      - Markdown links: [Card Name](https://...) → Card Name
+      - Markdown headers: ### Some Header → Some Header
+      - Inline code/bold/italic: `text`, **text**, *text*, ~~text~~
+      - Bare URLs: https://... or http://...
+      - HTML entities: &amp; &lt; &gt; &nbsp; etc.
+    """
+    # 1. Strip markdown links: [text](url) → text
+    text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
+    # 2. Strip markdown headers (###, ##, #)
+    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
+    # 3. Strip inline markdown formatting (*bold*, _italic_, ~~strike~~, `code`)
+    text = re.sub(r'[*_`~]+', '', text)
+    # 4. Strip bare URLs
+    text = re.sub(r'https?://\S+', '', text)
+    # 5. Strip HTML entities
+    text = re.sub(r'&\w+;', ' ', text)
+    # 6. Strip table separators (|---|---|)
+    text = re.sub(r'^\|[\s\-|]+\|?\s*$', '', text, flags=re.MULTILINE)
+    # 7. Collapse extra whitespace
+    text = re.sub(r'[ \t]{2,}', ' ', text)
+    return text
+
+
 def extract_cards_from_text(text: str) -> list:
     """
     Parse lot listing text and return a list of card dicts.
 
     Each dict has: raw_line, description, year, card_num, grader, grade
     """
+    # Pre-process: strip all Firecrawl markdown artifacts first
+    text = _clean_markdown(text)
+
     cards = []
-    # Split on newlines; also split runs like "Card A | Card B"
+    # Split on newlines
     lines = re.split(r'[\n\r]+', text)
 
     for line in lines:
-        # Strip markdown punctuation
-        clean = re.sub(r'[*_`~]+', '', line).strip()
+        clean = line.strip()
         if len(clean) < 8:
             continue
 
@@ -278,38 +308,64 @@ def extract_cards_from_text(text: str) -> list:
 
     return deduped
 
-# ── eBay search query builder ──────────────────────────────────────────────────
+# ── eBay search query builders ─────────────────────────────────────────────────
+_GRADE_EXCLUSIONS = '-PSA -BGS -SGC -CSG -HGA -graded -slab'
+
+def _clean_desc(desc: str) -> str:
+    """Strip markdown/URL artifacts from a card description."""
+    desc = re.sub(r'https?://\S+', '', desc)
+    desc = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', desc)
+    desc = re.sub(r'[\[\]()]+', '', desc)
+    desc = re.sub(r'\s+', ' ', desc).strip()
+    return desc
+
+
 def build_search_query(card: dict) -> str:
-    """Build a concise eBay search string for a card dict."""
+    """
+    Build an eBay search string for a card.
+
+    For RAW cards (no grader/grade): appends exclusion keywords so eBay
+    only returns ungraded copies (-PSA -BGS -SGC -CSG -HGA -graded -slab).
+
+    For GRADED cards: includes the grading company + grade.
+    """
     parts = []
     if card.get('year'):
         parts.append(card['year'])
-    desc = (card.get('description') or '').strip()
-    # Keep first 55 chars — enough for player + set name
+    desc = _clean_desc((card.get('description') or '').strip())
     if desc:
         parts.append(desc[:55].strip())
     if card.get('grader') and card.get('grade'):
+        # Graded card — include the grade in the query
         parts.append(f"{card['grader']} {card['grade']}")
+    else:
+        # Raw card — exclude slabs so comps are apples-to-apples
+        parts.append(_GRADE_EXCLUSIONS)
+    if card.get('card_num'):
+        parts.append(f"#{card['card_num']}")
+    return ' '.join(parts)
+
+
+def build_graded_query(card: dict) -> str:
+    """
+    Build a query for PSA-graded comps of a raw card.
+    Used to show the 'if graded' column.
+    """
+    parts = []
+    if card.get('year'):
+        parts.append(card['year'])
+    desc = _clean_desc((card.get('description') or '').strip())
+    if desc:
+        parts.append(desc[:55].strip())
+    # Any slab — PSA, BGS, SGC
+    parts.append('PSA OR BGS OR SGC')
     if card.get('card_num'):
         parts.append(f"#{card['card_num']}")
     return ' '.join(parts)
 
 # ── Per-card pricing ───────────────────────────────────────────────────────────
-def price_card(card: dict) -> dict:
-    """
-    Fetch active BIN listings for a card and compute pricing stats.
-
-    Returns a dict with:
-        query, lowest, three_lowest, three_highest, est_value, count, items
-    """
-    query  = build_search_query(card)
-    result = search_active_listings(
-        query,
-        max_results=_ACTIVE_MAX_RESULTS,
-        listing_type='FIXED_PRICE',
-    )
-
-    items  = result.get('items', [])
+def _pricing_stats(items: list, query: str) -> dict:
+    """Compute pricing stats from a list of eBay items."""
     prices = sorted(i['total_cost'] for i in items if i.get('total_cost', 0) > 0)
 
     if not prices:
@@ -321,12 +377,22 @@ def price_card(card: dict) -> dict:
             'est_value':     None,
             'count':         0,
             'items':         [],
+            'unreliable':    False,
         }
 
     three_low  = prices[:3]
     three_high = prices[-3:]
-    # Conservative estimated value = median of 3 lowest BIN prices
-    est_value  = three_low[len(three_low) // 2]
+
+    # Outlier guard: if spread within the 3 lowest is > 5x, the query
+    # matched mixed condition cards — use single lowest as conservative floor.
+    spread_ratio = (three_low[-1] / three_low[0]) if three_low[0] > 0 else 1
+    if spread_ratio > 5:
+        est_value  = three_low[0]
+        unreliable = True
+    else:
+        # Conservative estimated value = median of 3 lowest BIN prices
+        est_value  = three_low[len(three_low) // 2]
+        unreliable = False
 
     return {
         'query':         query,
@@ -336,7 +402,41 @@ def price_card(card: dict) -> dict:
         'est_value':     est_value,
         'count':         len(prices),
         'items':         items[:5],
+        'unreliable':    unreliable,
     }
+
+
+def price_card(card: dict) -> dict:
+    """
+    Fetch active BIN listings for a card and compute pricing stats.
+
+    For raw cards (no grader/grade):
+      - Main pricing uses raw-only query (-PSA -BGS etc.)
+      - Also fetches a 'graded_comp' dict showing graded market prices
+        (useful for deciding if the card is worth submitting to grading)
+
+    Returns a dict with:
+        query, lowest, three_lowest, three_highest, est_value, count, items,
+        unreliable, graded_comp (dict or None)
+    """
+    is_raw = not (card.get('grader') and card.get('grade'))
+
+    # ── Raw / graded main pricing ──────────────────────────────────────────
+    query  = build_search_query(card)
+    result = search_active_listings(query, max_results=_ACTIVE_MAX_RESULTS, listing_type='FIXED_PRICE')
+    stats  = _pricing_stats(result.get('items', []), query)
+
+    # ── Graded comp (raw cards only) ───────────────────────────────────────
+    graded_comp = None
+    if is_raw:
+        time.sleep(0.15)   # brief pause between back-to-back API calls
+        gq      = build_graded_query(card)
+        gresult = search_active_listings(gq, max_results=_ACTIVE_MAX_RESULTS, listing_type='FIXED_PRICE')
+        gstats  = _pricing_stats(gresult.get('items', []), gq)
+        graded_comp = gstats
+
+    stats['graded_comp'] = graded_comp
+    return stats
 
 # ── Manual card entry ──────────────────────────────────────────────────────────
 def manual_entry_mode() -> list:
@@ -429,12 +529,13 @@ def analyze_lot(item_id_or_url: str,
 
     elif vision_available() and lot.get('image_urls'):
         # PRIMARY: Claude Vision reads the lot photos directly
+        _MAX_VISION_IMAGES = 50
         if verbose:
-            n_imgs = min(len(lot['image_urls']), 6)
+            n_imgs = min(len(lot['image_urls']), _MAX_VISION_IMAGES)
             print(f'\nIdentifying cards via Claude Vision ({n_imgs} image(s))...')
         vision_cards = identify_cards_from_urls(
             lot['image_urls'],
-            max_images=6,
+            max_images=_MAX_VISION_IMAGES,
             verbose=verbose,
         )
         cards = [card_to_lot_format(c) for c in vision_cards if not c.get('error')]
