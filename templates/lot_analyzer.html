@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lot Analyzer — Card Grading App</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 28px 30px;
+            text-align: center;
+        }
+        header h1 { font-size: 2em; margin-bottom: 6px; }
+        header p  { font-size: 1em; opacity: 0.88; }
+
+        nav {
+            background: rgba(255,255,255,0.15);
+            padding: 10px 30px;
+            display: flex;
+            gap: 20px;
+        }
+        nav a {
+            color: white;
+            text-decoration: none;
+            font-size: 0.9em;
+            opacity: 0.85;
+        }
+        nav a:hover { opacity: 1; text-decoration: underline; }
+
+        .content { padding: 36px; }
+
+        /* ── Search form ── */
+        .search-box {
+            background: #f8f9ff;
+            border: 2px solid #667eea;
+            border-radius: 14px;
+            padding: 28px;
+            margin-bottom: 32px;
+        }
+        .search-box h2 {
+            font-size: 1.2em;
+            color: #333;
+            margin-bottom: 16px;
+        }
+        .input-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .input-row input[type="text"] {
+            flex: 1;
+            min-width: 260px;
+            padding: 12px 16px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 1em;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .input-row input[type="text"]:focus { border-color: #667eea; }
+        .btn-analyze {
+            padding: 12px 28px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+        .btn-analyze:hover   { opacity: 0.9; }
+        .btn-analyze:active  { transform: scale(0.98); }
+        .btn-analyze:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .hint {
+            margin-top: 10px;
+            font-size: 0.82em;
+            color: #888;
+        }
+
+        /* ── Loading spinner ── */
+        #loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+            color: #667eea;
+            font-size: 1.1em;
+        }
+        .spinner {
+            display: inline-block;
+            width: 36px; height: 36px;
+            border: 4px solid #e0e0e0;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 12px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Error banner ── */
+        .error-banner {
+            background: #fff0f0;
+            border: 1px solid #f5c6c6;
+            color: #c00;
+            padding: 14px 18px;
+            border-radius: 10px;
+            margin-bottom: 24px;
+            font-size: 0.95em;
+        }
+
+        /* ── Lot header card ── */
+        .lot-header {
+            background: #f0f2ff;
+            border-left: 5px solid #667eea;
+            border-radius: 10px;
+            padding: 20px 24px;
+            margin-bottom: 28px;
+        }
+        .lot-header h2 {
+            font-size: 1.15em;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .lot-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px;
+            font-size: 0.9em;
+            color: #555;
+        }
+        .lot-meta span strong { color: #333; }
+        .lot-meta a { color: #667eea; }
+
+        /* ── Signal badge ── */
+        .signal {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 1em;
+            margin-top: 10px;
+        }
+        .signal-go      { background: #d4f4dd; color: #1a7a3e; }
+        .signal-caution { background: #fff3cd; color: #856404; }
+        .signal-no-go   { background: #ffe0e0; color: #b30000; }
+        .signal-unknown { background: #f0f0f0; color: #555; }
+
+        /* ── Summary stats ── */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        .stat-card {
+            background: #f8f9ff;
+            border: 1px solid #e0e4ff;
+            border-radius: 12px;
+            padding: 16px 18px;
+            text-align: center;
+        }
+        .stat-card .label {
+            font-size: 0.78em;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 6px;
+        }
+        .stat-card .value {
+            font-size: 1.4em;
+            font-weight: 700;
+            color: #333;
+        }
+        .stat-card.highlight .value { color: #667eea; }
+        .stat-card.go-card   .value { color: #1a7a3e; }
+        .stat-card.no-go-card .value { color: #b30000; }
+
+        /* ── Results table ── */
+        .section-title {
+            font-size: 1.1em;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 14px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid #e8e8e8;
+            margin-bottom: 30px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88em;
+        }
+        thead th {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 11px 14px;
+            text-align: left;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        tbody tr:nth-child(even) { background: #fafafa; }
+        tbody tr:hover { background: #f0f2ff; }
+        tbody td {
+            padding: 10px 14px;
+            border-bottom: 1px solid #f0f0f0;
+            vertical-align: top;
+        }
+        .no-comps { color: #aaa; font-style: italic; }
+        .confidence-high   { color: #1a7a3e; font-weight: 600; }
+        .confidence-medium { color: #856404; }
+        .confidence-low    { color: #aaa; }
+
+        .price-col { font-weight: 600; color: #333; white-space: nowrap; }
+        .sub-prices { font-size: 0.8em; color: #888; margin-top: 3px; }
+
+        .badge-vision { font-size: 0.7em; background: #e8eeff; color: #667eea;
+                        border-radius: 4px; padding: 2px 6px; margin-left: 4px; }
+        .badge-text   { font-size: 0.7em; background: #f0f0f0; color: #888;
+                        border-radius: 4px; padding: 2px 6px; margin-left: 4px; }
+
+        /* ── Totals row ── */
+        .totals-row td {
+            background: #f0f2ff;
+            font-weight: 700;
+            border-top: 2px solid #667eea;
+        }
+
+        /* ── Footer ── */
+        footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 0.8em;
+            color: #aaa;
+            border-top: 1px solid #f0f0f0;
+        }
+        footer a { color: #667eea; text-decoration: none; }
+
+        @media (max-width: 600px) {
+            .content { padding: 20px; }
+            header h1 { font-size: 1.4em; }
+            .summary-grid { grid-template-columns: 1fr 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <header>
+        <h1>🔍 Lot Analyzer</h1>
+        <p>Paste an eBay lot URL to get per-card pricing and a buy / no-buy recommendation</p>
+    </header>
+
+    <nav>
+        <a href="/">🏠 Grader</a>
+        <a href="/lot-analyzer">📦 Lot Analyzer</a>
+    </nav>
+
+    <div class="content">
+
+        <!-- ── Search form ── -->
+        <div class="search-box">
+            <h2>eBay Lot URL or Item Number</h2>
+            <form method="POST" action="/lot-analyzer" id="lotForm">
+                <div class="input-row">
+                    <input type="text" name="lot_url" id="lotUrl"
+                           placeholder="https://www.ebay.com/itm/123456789012  or  123456789012"
+                           value="{{ request.form.get('lot_url', '') }}"
+                           autocomplete="off" spellcheck="false" required>
+                    <button type="submit" class="btn-analyze" id="analyzeBtn">
+                        Analyze Lot
+                    </button>
+                </div>
+                <p class="hint">
+                    Works with any eBay card lot. Claude Vision reads the photos directly —
+                    no need to list the cards manually.
+                </p>
+            </form>
+        </div>
+
+        <!-- ── Loading indicator ── -->
+        <div id="loading">
+            <div class="spinner"></div>
+            <p>Analyzing lot… fetching prices for each card.<br>
+               <small>This usually takes 30–60 seconds depending on lot size.</small>
+            </p>
+        </div>
+
+        <!-- ── Error ── -->
+        {% if error %}
+        <div class="error-banner">⚠️ {{ error }}</div>
+        {% endif %}
+
+        <!-- ── Results ── -->
+        {% if result %}
+        {% set lot    = result.lot %}
+        {% set cards  = result.cards %}
+        {% set totals = result.totals %}
+
+        <!-- Lot header -->
+        <div class="lot-header">
+            <h2>{{ lot.title }}</h2>
+            <div class="lot-meta">
+                <span><strong>Asking:</strong> ${{ "%.2f"|format(lot.price) }}</span>
+                <span><strong>Seller:</strong> {{ lot.seller or 'N/A' }}</span>
+                <span><strong>Cards found:</strong> {{ totals.total_cards }}</span>
+                <span><strong>Cards priced:</strong> {{ totals.priced_count }}</span>
+                <span><a href="{{ lot.item_url }}" target="_blank">View on eBay ↗</a></span>
+            </div>
+
+            {% if totals.signal_code == 'go' %}
+                <div class="signal signal-go">{{ totals.signal }}</div>
+            {% elif totals.signal_code == 'caution' %}
+                <div class="signal signal-caution">{{ totals.signal }}</div>
+            {% elif totals.signal_code == 'no-go' %}
+                <div class="signal signal-no-go">{{ totals.signal }}</div>
+            {% else %}
+                <div class="signal signal-unknown">{{ totals.signal }}</div>
+            {% endif %}
+        </div>
+
+        <!-- Summary stats -->
+        <div class="summary-grid">
+            <div class="stat-card">
+                <div class="label">Asking Price</div>
+                <div class="value">${{ "%.2f"|format(totals.asking_price) }}</div>
+            </div>
+            <div class="stat-card highlight">
+                <div class="label">Est. Total Value</div>
+                <div class="value">${{ "{:,.2f}".format(totals.total_est_value) }}</div>
+            </div>
+            {% if totals.total_cards > totals.priced_count %}
+            <div class="stat-card">
+                <div class="label">Extrapolated Value</div>
+                <div class="value">${{ "{:,.2f}".format(totals.extrapolated_value) }}</div>
+            </div>
+            {% endif %}
+            {% if totals.ratio %}
+            <div class="stat-card">
+                <div class="label">Price / Value</div>
+                <div class="value">{{ "%.0f%%"|format(totals.ratio * 100) }}</div>
+            </div>
+            {% endif %}
+            {% if totals.suggested_max_bid %}
+            <div class="stat-card
+                {% if totals.signal_code == 'go' %}go-card
+                {% elif totals.signal_code == 'no-go' %}no-go-card{% endif %}">
+                <div class="label">Suggested Max Bid</div>
+                <div class="value">${{ "{:,.2f}".format(totals.suggested_max_bid) }}</div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Per-card table -->
+        <div class="section-title">Card-by-Card Breakdown</div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Card</th>
+                        <th>Grade</th>
+                        <th>Lowest BIN</th>
+                        <th>Est. Value</th>
+                        <th>3 Lowest Active</th>
+                        <th>3 Highest Active</th>
+                        <th>Listings</th>
+                        <th>Confidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for card in cards %}
+                {% set p = card.pricing %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>
+                        {% set year = card.year or '' %}
+                        {% set desc = card.description or card.raw_line or '' %}
+                        <strong>{{ year }} {{ desc[:50] }}</strong>
+                        {% if card.get('_source') == 'vision' %}
+                            <span class="badge-vision">Vision</span>
+                        {% else %}
+                            <span class="badge-text">Text</span>
+                        {% endif %}
+                        {% if card.card_num %}
+                            <br><small style="color:#aaa">#{{ card.card_num }}</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if card.grader and card.grade %}
+                            {{ card.grader }} {{ card.grade }}
+                        {% else %}
+                            <span class="no-comps">Raw</span>
+                        {% endif %}
+                    </td>
+                    <td class="price-col">
+                        {% if p.lowest is not none %}
+                            ${{ "%.2f"|format(p.lowest) }}
+                        {% else %}
+                            <span class="no-comps">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="price-col">
+                        {% if p.est_value is not none %}
+                            ${{ "%.2f"|format(p.est_value) }}
+                        {% else %}
+                            <span class="no-comps">No comps</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if p.three_lowest %}
+                            {% for v in p.three_lowest %}
+                                <span class="price-col">${{ "%.2f"|format(v) }}</span>{% if not loop.last %}<br>{% endif %}
+                            {% endfor %}
+                        {% else %}
+                            <span class="no-comps">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if p.three_highest %}
+                            {% for v in p.three_highest %}
+                                <span style="color:#888">${{ "%.2f"|format(v) }}</span>{% if not loop.last %}<br>{% endif %}
+                            {% endfor %}
+                        {% else %}
+                            <span class="no-comps">—</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ p.count or 0 }}</td>
+                    <td>
+                        {% set conf = card.get('confidence', '') %}
+                        <span class="confidence-{{ conf }}">{{ conf|capitalize }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+
+                <!-- Totals row -->
+                <tr class="totals-row">
+                    <td colspan="4" style="text-align:right">Total estimated value:</td>
+                    <td colspan="5">${{ "{:,.2f}".format(totals.total_est_value) }}
+                        {% if totals.total_cards > totals.priced_count %}
+                            &nbsp;<small style="color:#888">({{ totals.priced_count }}/{{ totals.total_cards }} priced)</small>
+                        {% endif %}
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+
+        {% if totals.total_cards > totals.priced_count %}
+        <p style="font-size:0.82em;color:#888;margin-top:-20px;margin-bottom:24px;">
+            * Extrapolated value (${{ "{:,.2f}".format(totals.extrapolated_value) }}) applies the average
+            of priced cards to the {{ totals.total_cards - totals.priced_count }} unpriced card(s).
+        </p>
+        {% endif %}
+
+        {% endif %} {# end result #}
+
+    </div>{# /content #}
+
+    <footer>
+        <a href="/">Card Grading App</a> &nbsp;·&nbsp;
+        Prices from eBay active BIN listings · Est. value = median of 3 lowest active listings
+    </footer>
+</div>
+
+<script>
+    // Show spinner while analyzing
+    document.getElementById('lotForm').addEventListener('submit', function() {
+        document.getElementById('analyzeBtn').disabled = true;
+        document.getElementById('analyzeBtn').textContent = 'Analyzing…';
+        document.getElementById('loading').style.display = 'block';
+    });
+
+    // Auto-focus the URL input on load (unless results are showing)
+    {% if not result %}
+    document.getElementById('lotUrl').focus();
+    {% endif %}
+</script>
+</body>
+</html>

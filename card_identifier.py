@@ -1,8 +1,14 @@
 """
-Card Identification via OCR
+Card Identification
 
-Extracts player name, year, manufacturer, set name, and card number
-from sports card images using EasyOCR + regex post-processing.
+Primary:  Claude Vision (card_vision.py) — reads player, year, set, parallel,
+          grader, grade, cert# in one API call. Handles foil, holo, slabs,
+          grid shots. Requires ANTHROPIC_API_KEY in .env.
+
+Fallback: EasyOCR + regex — local/free, lower accuracy, single cards only.
+
+identify_card(image_path) always tries Vision first; falls back to OCR if
+ANTHROPIC_API_KEY is not set or the Vision call errors.
 """
 
 import re
@@ -10,6 +16,14 @@ import os
 import cv2
 import numpy as np
 import difflib
+
+# ── Vision import (optional — falls back gracefully if not available) ──────────
+try:
+    from card_vision import identify_card_vision as _vision_identify, vision_available
+    _VISION_IMPORTED = True
+except ImportError:
+    _VISION_IMPORTED = False
+    def vision_available(): return False
 
 try:
     import easyocr as _easyocr
@@ -89,7 +103,10 @@ def _is_name_candidate(text: str) -> bool:
 
 def identify_card(image_path: str) -> dict:
     """
-    Identify a sports card from its front image using OCR.
+    Identify a sports card from its front image.
+
+    Tries Claude Vision first (if ANTHROPIC_API_KEY is set); falls back
+    to EasyOCR + regex if Vision is unavailable or returns an error.
 
     Returns:
         {
@@ -100,9 +117,28 @@ def identify_card(image_path: str) -> dict:
             card_number: str | None,
             search_query: str,         # ready-to-use eBay query
             raw_text: list[str],
-            confidence: 'high'|'medium'|'low'
+            confidence: 'high'|'medium'|'low',
+            # (Vision only) parallel, grader, grade, cert_number, sport, team, rookie
         }
     """
+    # ── Claude Vision (primary) ────────────────────────────────────────────────
+    if _VISION_IMPORTED and vision_available():
+        result = _vision_identify(image_path)
+        if not result.get('error') and result.get('confidence') != 'low':
+            return result
+        # If vision returned low confidence, try OCR as well and pick the better one
+        ocr_result = _identify_card_ocr(image_path)
+        if ocr_result.get('confidence') in ('high', 'medium'):
+            return ocr_result
+        # Vision low-confidence beats OCR low-confidence (Vision still parsed more fields)
+        return result
+
+    # ── EasyOCR fallback ───────────────────────────────────────────────────────
+    return _identify_card_ocr(image_path)
+
+
+def _identify_card_ocr(image_path: str) -> dict:
+    """EasyOCR-based card identification (original implementation)."""
     reader = _get_reader()
     if reader is None:
         return {

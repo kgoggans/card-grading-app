@@ -47,3 +47,9 @@ test_images/
 
 # Environment
 .env
+
+# Training artifacts (regenerated locally, not source-controlled)
+training_data/images/
+training_data/*.pkl
+training_data/*.pt
+training_data/feature_cache.json

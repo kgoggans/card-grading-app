@@ -2316,6 +2316,54 @@ def grade_slab():
                     pass
 
 
+# ---------------------------------------------------------------------------
+# Lot Analyzer routes
+# ---------------------------------------------------------------------------
+try:
+    from lot_analyzer import analyze_lot, parse_item_id
+    _LOT_ANALYZER_AVAILABLE = True
+except ImportError:
+    _LOT_ANALYZER_AVAILABLE = False
+
+
+@app.route('/lot-analyzer', methods=['GET'])
+def lot_analyzer_page():
+    """Render the lot analyzer form."""
+    return render_template('lot_analyzer.html', result=None, error=None)
+
+
+@app.route('/lot-analyzer', methods=['POST'])
+def lot_analyzer_run():
+    """Run the lot analysis and render results."""
+    if not _LOT_ANALYZER_AVAILABLE:
+        return render_template(
+            'lot_analyzer.html', result=None,
+            error='lot_analyzer.py not found. Make sure it is in the app folder.'
+        )
+
+    lot_input = request.form.get('lot_url', '').strip()
+    if not lot_input:
+        return render_template('lot_analyzer.html', result=None,
+                               error='Please enter an eBay URL or item number.')
+
+    try:
+        parse_item_id(lot_input)  # validate early
+    except ValueError as exc:
+        return render_template('lot_analyzer.html', result=None, error=str(exc))
+
+    try:
+        result = analyze_lot(lot_input, verbose=False)
+    except Exception as exc:
+        return render_template('lot_analyzer.html', result=None,
+                               error=f'Analysis failed: {exc}')
+
+    if result.get('error'):
+        return render_template('lot_analyzer.html', result=None,
+                               error=result['error'])
+
+    return render_template('lot_analyzer.html', result=result, error=None)
+
+
 if __name__ == '__main__':
     # Debug mode should only be enabled in development
     # Set FLASK_ENV=production in production environments
