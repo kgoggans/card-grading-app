@@ -654,14 +654,13 @@ function makeReviewRow(card, idx) {
   const tdImg = document.createElement('td');
   if (card._image_url) {
     const img = document.createElement('img');
-    img.className = 'thumb';
+    img.className = 'thumb clickable-thumb';
     img.src = card._image_url;
     img.alt = '';
     img.onerror = () => {
       img.replaceWith(Object.assign(document.createElement('div'),
         {className:'thumb-placeholder',textContent:'No photo'}));
     };
-    img.className = 'clickable-thumb';
     img.title = 'Click to expand';
     img.addEventListener('click', () => openLightbox(card._image_url, card.player_name));
     tdImg.appendChild(img);

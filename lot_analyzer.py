@@ -213,16 +213,18 @@ def _extract_ebay_image_urls(html: str) -> list:
     """
     # Cut HTML at the first "similar items" / sponsored section to avoid
     # pulling in images from other sellers' listings or eBay ads.
+    # These strings only appear as section HEADERS for eBay recommendation sidebars,
+    # never inside the main listing gallery.  Trimming there keeps us from pulling
+    # in other sellers' card images that get embedded in those sections.
     _CUTOFF_MARKERS = [
         'Similar sponsored items',
         'You might also like',
         'People who viewed this item also viewed',
-        'Explore related items',
-        'More to explore',
         'Related sponsored items',
-        'Sponsored items based on your recent',
+        'Sponsored items based on your recent views',
         '"sectionType":"RECOMMENDED"',
         '"sectionType":"SIMILAR"',
+        '"module":"RECOMMENDED_ITEMS"',
     ]
     content = html
     for marker in _CUTOFF_MARKERS:

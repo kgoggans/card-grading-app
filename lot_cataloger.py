@@ -183,12 +183,17 @@ def identify_lot_stream(item_id_or_url: str):
             card = card_to_lot_format(rc)
             card['_image_url'] = img_url
 
-            # Deduplicate on (player, year, card_num, serial)
+            # Deduplicate on (player, year, card_num, serial, parallel, set).
+            # Including parallel and set_name prevents cards by the same player
+            # (e.g. base vs Prizm, or different sets in the same lot) from
+            # collapsing when Vision can't read the card number.
             key = (
                 player.lower(),
                 card.get('year') or '',
                 card.get('card_num') or '',
                 card.get('serial_number') or '',
+                (card.get('parallel') or '').lower(),
+                (card.get('set_name') or '').lower(),
             )
             if key in seen_keys:
                 continue
