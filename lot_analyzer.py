@@ -200,54 +200,80 @@ def fetch_lot_page_text(item_url: str) -> str:
 
 def _extract_ebay_image_urls(html: str) -> list:
     """
-    Extract only the LISTING GALLERY image URLs from raw eBay page HTML.
+    Extract ONLY this listing's own gallery photos from eBay page HTML.
 
-    The key insight: eBay's listing gallery photos are always referenced at
-    LARGE sizes (s-l400, s-l500, s-l1600) in the HTML because they're shown
-    prominently.  "Similar items" / sponsored sidebar thumbnails are ONLY ever
-    referenced at small sizes (s-l64, s-l140, s-l225).
+    eBay embeds the listing's photo array in specific JSON keys inside script
+    tags.  These keys contain ONLY this item's seller-uploaded photos and are
+    completely separate from "More from this seller", "Similar items", and any
+    other recommendation sections -- which is why earlier approaches (text
+    cutoff markers, size-based heuristics) kept pulling in the seller's other
+    individual card listings by mistake.
 
-    So we collect every unique image hash and the maximum pixel size it appears
-    at, then keep only the hashes that appear at ≥ 300 px — these are the
-    seller's own gallery photos.  Sidebar items that only appear at ≤ 225 px
-    are automatically excluded without any brittle text-marker cutoffs.
-
-    All kept URLs are normalized to s-l1600 for maximum resolution.
+    Strategies tried in order:
+      1. eBay's gallery JSON keys (pictureURLList, imageUrlList, etc.)
+      2. JSON-LD structured data (<script type="application/ld+json">)
+      3. Return [] so the caller falls back to Browse API images (always correct)
     """
-    # Combined pattern handles both plain and JSON-backslash-encoded URLs.
-    # Group 1 = hash, Group 2 = size number.
-    _PATTERN_PLAIN = re.compile(
-        r'https?://i\.ebayimg\.com/images/g/([A-Za-z0-9\-_~]+)/s-l(\d+)\.(?:jpg|jpeg|png|webp)',
-        re.IGNORECASE,
-    )
-    _PATTERN_JSON = re.compile(
-        r'https?:\\/\\/i\\.ebayimg\\.com\\/images\\/g\\/([A-Za-z0-9\\-_~]+)\\/s-l(\d+)\\.(?:jpg|jpeg|png|webp)',
-        re.IGNORECASE,
-    )
+    seen: set    = set()
+    result: list = []
 
-    hash_max_size: dict = {}
+    def _add(url: str) -> None:
+        url = url.replace('\\/', '/').replace('\\.', '.')
+        url = re.sub(r'/s-l\d+\.', '/s-l1600.', url)
+        if url not in seen and 'i.ebayimg.com' in url:
+            seen.add(url)
+            result.append(url)
 
-    for pattern in (_PATTERN_PLAIN, _PATTERN_JSON):
-        for m in pattern.finditer(html):
-            img_hash = m.group(1)
-            try:
-                size = int(m.group(2))
-            except (ValueError, IndexError):
-                continue
-            if img_hash not in hash_max_size or size > hash_max_size[img_hash]:
-                hash_max_size[img_hash] = size
+    # ── Strategy 1: eBay gallery JSON arrays ──────────────────────────────────
+    # eBay embeds the item's own photo list under these keys inside script blocks.
+    # They are item-specific and never mix in sidebar / other-seller images.
+    for key in ['pictureURLList', 'pictureUrlList', 'imageUrlList',
+                'PictureURL', 'pictureURL', 'galleryPlusPictureURL']:
+        # Array form: "key":["url","url",...]
+        m = re.search(
+            '"' + re.escape(key) + r'"\s*:\s*\[([^\]]*)\]',
+            html, re.DOTALL,
+        )
+        if m:
+            for url in re.findall(
+                r'https?://[^"\'\\]*ebayimg\.com[^"\'\\]*\.(?:jpg|jpeg|png|webp)',
+                m.group(1), re.IGNORECASE,
+            ):
+                _add(url)
+        # Scalar form: "key":"url"
+        m2 = re.search(
+            '"' + re.escape(key) + r'"\s*:\s*"([^"]+ebayimg\.com[^"]+)"',
+            html,
+        )
+        if m2:
+            _add(m2.group(1))
 
-    # Threshold: gallery images appear at ≥300 px; sidebar thumbnails ≤225 px.
-    # Using 300 captures gallery strip thumbnails (sometimes s-l300) plus
-    # full-size gallery images (s-l400 → s-l1600) while reliably excluding
-    # s-l64 / s-l140 / s-l225 recommendation-section thumbnails.
-    _MIN_GALLERY_SIZE = 300
+    if result:
+        return result
 
-    result = []
-    for img_hash, max_size in hash_max_size.items():
-        if max_size >= _MIN_GALLERY_SIZE:
-            result.append(f'https://i.ebayimg.com/images/g/{img_hash}/s-l1600.jpg')
+    # ── Strategy 2: JSON-LD structured data ───────────────────────────────────
+    for block in re.findall(
+        r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+        html, re.DOTALL | re.IGNORECASE,
+    ):
+        try:
+            data = json.loads(block.strip())
+            images = data.get('image', [])
+            if isinstance(images, str):
+                images = [images]
+            for img in (images if isinstance(images, list) else []):
+                if isinstance(img, str):
+                    _add(img)
+                elif isinstance(img, dict):
+                    for k in ('url', 'contentUrl', 'thumbnailUrl'):
+                        if img.get(k):
+                            _add(img[k])
+                            break
+        except Exception:
+            pass
 
+    # Return whatever we found (may be empty).
+    # fetch_all_lot_images() will merge with Browse API images (always correct).
     return result
 
 
