@@ -275,6 +275,9 @@
       <button class="btn-secondary" id="btn-cancel-id" style="margin-top:10px;display:none">
         Cancel
       </button>
+      <button class="btn-secondary" id="btn-clear-rerun" style="margin-top:10px;display:none">
+        🔄 Clear Cache &amp; Re-Run
+      </button>
     </div>
 
     <!-- ════════════════════════════════════════
@@ -524,6 +527,9 @@ function handleSseEvent(data) {
       setProgress(100, 100,
         '✅ Identification complete — ' + _cards.length + ' card(s) found' + suffix);
       document.getElementById('btn-cancel-id').style.display = 'none';
+      // Show "Clear Cache & Re-Run" only when results came from cache
+      document.getElementById('btn-clear-rerun').style.display =
+        data.cached ? 'inline-block' : 'none';
       showProceedButton();
       break;
 
@@ -628,6 +634,22 @@ function showProceedButton() {
 document.getElementById('btn-cancel-id').addEventListener('click', () => {
   if (_eventSource) { _eventSource.close(); _eventSource = null; }
   showPhase('phase-input');
+});
+
+document.getElementById('btn-clear-rerun').addEventListener('click', async () => {
+  if (_itemId) {
+    await fetch('/lot-cataloger/clear-cache', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({item_id: _itemId}),
+    });
+  }
+  // Reset and restart identification from scratch
+  _cards = [];
+  document.getElementById('feed-grid').innerHTML = '';
+  document.getElementById('btn-clear-rerun').style.display = 'none';
+  document.getElementById('btn-proceed-review').style.display = 'none';
+  startIdentification();
 });
 
 // ══════════════════════════════════════════════════════════
