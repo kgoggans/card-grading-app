@@ -202,61 +202,53 @@ def _extract_ebay_image_urls(html: str) -> list:
     """
     Extract only the LISTING GALLERY image URLs from raw eBay page HTML.
 
-    eBay embeds listing images as i.ebayimg.com URLs in the HTML, but the
-    full page also contains images from "Similar items", sponsored listings,
-    "You might also like", and other recommendations — none of which belong
-    to the lot being analyzed.
+    The key insight: eBay's listing gallery photos are always referenced at
+    LARGE sizes (s-l400, s-l500, s-l1600) in the HTML because they're shown
+    prominently.  "Similar items" / sponsored sidebar thumbnails are ONLY ever
+    referenced at small sizes (s-l64, s-l140, s-l225).
 
-    We truncate the HTML at the first sidebar/recommendation section header
-    before running the URL regex, so only photos the seller uploaded are returned.
-    We normalize all URLs to s-l1600 (largest available size).
+    So we collect every unique image hash and the maximum pixel size it appears
+    at, then keep only the hashes that appear at ≥ 300 px — these are the
+    seller's own gallery photos.  Sidebar items that only appear at ≤ 225 px
+    are automatically excluded without any brittle text-marker cutoffs.
+
+    All kept URLs are normalized to s-l1600 for maximum resolution.
     """
-    # Cut HTML at the first "similar items" / sponsored section to avoid
-    # pulling in images from other sellers' listings or eBay ads.
-    # These strings only appear as section HEADERS for eBay recommendation sidebars,
-    # never inside the main listing gallery.  Trimming there keeps us from pulling
-    # in other sellers' card images that get embedded in those sections.
-    _CUTOFF_MARKERS = [
-        'Similar sponsored items',
-        'You might also like',
-        'People who viewed this item also viewed',
-        'Related sponsored items',
-        'Sponsored items based on your recent views',
-        '"sectionType":"RECOMMENDED"',
-        '"sectionType":"SIMILAR"',
-        '"module":"RECOMMENDED_ITEMS"',
-    ]
-    content = html
-    for marker in _CUTOFF_MARKERS:
-        idx = html.find(marker)
-        if 0 < idx < len(html):
-            content = html[:idx]
-            break
-
-    # Match eBay image CDN URLs within the truncated (listing-only) content
-    pattern = re.compile(
-        r'https?://i\.ebayimg\.com/images/g/[A-Za-z0-9\-_]+/s-l\d+\.(?:jpg|jpeg|png|webp)',
+    # Combined pattern handles both plain and JSON-backslash-encoded URLs.
+    # Group 1 = hash, Group 2 = size number.
+    _PATTERN_PLAIN = re.compile(
+        r'https?://i\.ebayimg\.com/images/g/([A-Za-z0-9\-_~]+)/s-l(\d+)\.(?:jpg|jpeg|png|webp)',
         re.IGNORECASE,
     )
-    raw_urls = pattern.findall(content)
-
-    # Also catch URLs in JSON-encoded strings (backslash-escaped slashes)
-    raw_urls += re.findall(
-        r'https?:\\/\\/i\\.ebayimg\\.com\\/images\\/g\\/[A-Za-z0-9\\-_]+\\/s-l\d+\\.(?:jpg|jpeg|png|webp)',
-        content, re.IGNORECASE,
+    _PATTERN_JSON = re.compile(
+        r'https?:\\/\\/i\\.ebayimg\\.com\\/images\\/g\\/([A-Za-z0-9\\-_~]+)\\/s-l(\d+)\\.(?:jpg|jpeg|png|webp)',
+        re.IGNORECASE,
     )
 
-    normalized, seen = [], set()
-    for url in raw_urls:
-        # Unescape backslash encoding
-        url = url.replace('\\/', '/').replace('\\.', '.')
-        # Upgrade to largest size
-        url = re.sub(r'/s-l\d+\.', '/s-l1600.', url)
-        if url not in seen:
-            seen.add(url)
-            normalized.append(url)
+    hash_max_size: dict = {}
 
-    return normalized
+    for pattern in (_PATTERN_PLAIN, _PATTERN_JSON):
+        for m in pattern.finditer(html):
+            img_hash = m.group(1)
+            try:
+                size = int(m.group(2))
+            except (ValueError, IndexError):
+                continue
+            if img_hash not in hash_max_size or size > hash_max_size[img_hash]:
+                hash_max_size[img_hash] = size
+
+    # Threshold: gallery images appear at ≥300 px; sidebar thumbnails ≤225 px.
+    # Using 300 captures gallery strip thumbnails (sometimes s-l300) plus
+    # full-size gallery images (s-l400 → s-l1600) while reliably excluding
+    # s-l64 / s-l140 / s-l225 recommendation-section thumbnails.
+    _MIN_GALLERY_SIZE = 300
+
+    result = []
+    for img_hash, max_size in hash_max_size.items():
+        if max_size >= _MIN_GALLERY_SIZE:
+            result.append(f'https://i.ebayimg.com/images/g/{img_hash}/s-l1600.jpg')
+
+    return result
 
 
 def fetch_all_lot_images(item_url: str, browse_images: list) -> list:
