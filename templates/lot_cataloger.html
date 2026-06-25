@@ -597,10 +597,17 @@ function addFeedCard(card, imgUrl) {
   const div  = document.createElement('div');
   div.className = 'feed-card';
 
-  // If Vision returned a bounding box, show only that card's region of the photo.
-  // Otherwise fall back to the full image.
-  const thumb = imgUrl ? buildThumb(imgUrl, card.bbox, card.player_name) : null;
-  if (thumb) div.appendChild(thumb);
+  // Photo cards get a thumbnail; text-parsed cards get a "From description" label.
+  if (imgUrl) {
+    const thumb = buildThumb(imgUrl, card.bbox, card.player_name);
+    if (thumb) div.appendChild(thumb);
+  } else {
+    const lbl = document.createElement('div');
+    lbl.className = 'thumb-placeholder';
+    lbl.style.cssText = 'font-size:.7em;color:#888;background:#f0f2ff;height:60px';
+    lbl.textContent = '📋 From description';
+    div.appendChild(lbl);
+  }
 
   const player = document.createElement('div');
   player.className = 'fc-player';

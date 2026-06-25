@@ -72,6 +72,7 @@ from card_vision import (                                    # noqa: E402
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 _BROWSE_ITEM_ENDPOINT = 'https://api.ebay.com/buy/browse/v1/item/v1|{item_id}|0'
+_SHOPPING_API         = 'https://open.api.ebay.com/shopping'   # no OAuth needed
 _FIRECRAWL_SCRAPE     = 'https://api.firecrawl.dev/v1/scrape'
 _UA = (
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
@@ -164,6 +165,51 @@ def fetch_lot_item(item_id: str) -> dict:
         'seller':      data.get('seller', {}).get('username', ''),
         'error':       None,
     }
+
+# ── eBay Shopping API: get ALL gallery images (no OAuth needed) ───────────────
+def fetch_shopping_api_images(item_id: str) -> list:
+    """
+    Use eBay's Shopping API (GetSingleItem) to retrieve ALL gallery image URLs
+    for a listing.  Unlike the Browse API which caps at 12 additionalImages,
+    the Shopping API returns the complete PictureURL array — everything the
+    seller uploaded.  Requires only the App ID (EBAY_CLIENT_ID), no OAuth.
+
+    Returns a list of image URLs, or [] on failure.
+    """
+    from urllib.parse import urlencode
+    app_id = os.environ.get('EBAY_CLIENT_ID', '').strip()
+    if not app_id:
+        return []
+
+    params = {
+        'callname':         'GetSingleItem',
+        'responseencoding': 'JSON',
+        'appid':            app_id,
+        'siteid':           '0',
+        'version':          '967',
+        'ItemID':           item_id,
+        'IncludeSelector':  'Details',
+    }
+    url = _SHOPPING_API + '?' + urlencode(params)
+    try:
+        req = Request(url, headers={'User-Agent': _UA, 'Accept': 'application/json'})
+        with urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        pictures = data.get('Item', {}).get('PictureURL', [])
+        if isinstance(pictures, str):
+            pictures = [pictures]
+        # Normalize to s-l1600 for maximum resolution
+        result = []
+        seen = set()
+        for url in pictures:
+            url = re.sub(r'/s-l\d+\.', '/s-l1600.', url)
+            if url not in seen:
+                seen.add(url)
+                result.append(url)
+        return result
+    except Exception:
+        return []
+
 
 # ── Firecrawl: full listing page text ─────────────────────────────────────────
 def fetch_lot_page_text(item_url: str) -> str:
@@ -281,52 +327,73 @@ def fetch_all_lot_images(item_url: str, browse_images: list) -> list:
     """
     Return the COMPLETE gallery image list for an eBay lot listing.
 
-    eBay Browse API only returns ~24 images even for large lots.
-    This fetches the full listing page HTML via Firecrawl and extracts
-    ALL gallery image URLs — essential for lots with 50-200+ photos.
+    Priority:
+      1. eBay Shopping API (GetSingleItem) — returns ALL seller-uploaded photos
+         with no cap, using only the App ID.  This is the correct solution.
+      2. Firecrawl HTML scrape + JSON key extraction — fallback if Shopping API
+         returns nothing (e.g. sandbox items, API outage).
+      3. Browse API images alone — last resort (only ~12 photos).
 
     Args:
-        item_url      : eBay listing URL
-        browse_images : Images already found via Browse API (kept as fallback)
+        item_url      : eBay listing URL (used to extract item_id for Shopping API)
+        browse_images : Images already found via Browse API (used as seed/fallback)
 
     Returns:
-        Deduplicated list of image URLs (Browse API + page HTML)
+        Deduplicated list of image URLs, normalized to s-l1600.
     """
-    key = os.environ.get('FIRECRAWL_API_KEY', '').strip()
+    from urllib.parse import urlparse
     all_images = list(browse_images)
     existing   = set(browse_images)
 
-    if not key:
-        return all_images  # no Firecrawl key — use Browse API images only
+    def _merge(new_urls):
+        for u in new_urls:
+            if u not in existing:
+                existing.add(u)
+                all_images.append(u)
 
-    payload = {
-        'url':             item_url,
-        'formats':         ['html'],   # raw HTML gives us all embedded image URLs
-        'onlyMainContent': False,      # include the full page, not just article content
-        'timeout':         45_000,
-    }
-    hdr = {
-        'Content-Type':  'application/json',
-        'Authorization': f'Bearer {key}',
-        'User-Agent':    _UA,
-    }
-    try:
-        body = json.dumps(payload).encode()
-        req  = Request(_FIRECRAWL_SCRAPE, data=body, headers=hdr, method='POST')
-        with urlopen(req, timeout=90) as resp:
-            result = json.loads(resp.read().decode('utf-8'))
-        html = result.get('data', {}).get('html', '') or ''
-        if html:
-            page_images = _extract_ebay_image_urls(html)
-            added = 0
-            for img in page_images:
-                if img not in existing:
-                    all_images.append(img)
-                    existing.add(img)
-                    added += 1
-    except Exception:
-        pass  # Fall back to Browse API images
+    # ── Priority 1: eBay Shopping API ─────────────────────────────────────────
+    # Extract item_id from the URL for the Shopping API call
+    item_id = ''
+    m = re.search(r'/itm/(?:[^/\s]+/)?(\d{8,13})', item_url)
+    if m:
+        item_id = m.group(1)
+    if not item_id:
+        m = re.search(r'[?&](?:item|id)=(\d{8,13})', item_url)
+        if m:
+            item_id = m.group(1)
 
+    if item_id:
+        shopping_images = fetch_shopping_api_images(item_id)
+        if shopping_images:
+            _merge(shopping_images)
+            return all_images   # Shopping API succeeded — no need for Firecrawl
+
+    # ── Priority 2: Firecrawl HTML + JSON key extraction ──────────────────────
+    fc_key = os.environ.get('FIRECRAWL_API_KEY', '').strip()
+    if fc_key:
+        payload = {
+            'url':             item_url,
+            'formats':         ['html'],
+            'onlyMainContent': False,
+            'timeout':         45_000,
+        }
+        hdr = {
+            'Content-Type':  'application/json',
+            'Authorization': f'Bearer {fc_key}',
+            'User-Agent':    _UA,
+        }
+        try:
+            body = json.dumps(payload).encode()
+            req  = Request(_FIRECRAWL_SCRAPE, data=body, headers=hdr, method='POST')
+            with urlopen(req, timeout=90) as resp:
+                result = json.loads(resp.read().decode('utf-8'))
+            html = result.get('data', {}).get('html', '') or ''
+            if html:
+                _merge(_extract_ebay_image_urls(html))
+        except Exception:
+            pass
+
+    # ── Priority 3: Browse API images alone ───────────────────────────────────
     return all_images
 
 # ── Card extraction from lot text ──────────────────────────────────────────────

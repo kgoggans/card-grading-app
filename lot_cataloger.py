@@ -25,6 +25,8 @@ from lot_analyzer import (
     parse_item_id,
     fetch_lot_item,
     fetch_all_lot_images,
+    fetch_lot_page_text,
+    extract_cards_from_text,
     price_card,
     _THRESHOLD_GO,
     _THRESHOLD_CAUTION,
@@ -203,6 +205,54 @@ def identify_lot_stream(item_id_or_url: str):
             yield _evt({'type': 'card', 'image_url': img_url, 'card': card})
 
         time.sleep(0.3)
+
+    # ── Parse listing description text ────────────────────────────────────────
+    # Many sellers list their cards in the description, not just in photos.
+    # This catches everything Vision couldn't see in photos.
+    yield _evt({'type': 'progress', 'current': total_imgs, 'total': total_imgs,
+                'msg': 'Reading listing description for additional cards...'})
+    try:
+        page_text = fetch_lot_page_text(lot['item_url'])
+        if page_text:
+            text_cards = extract_cards_from_text(page_text)
+            for tc in text_cards:
+                desc = tc.get('description', '').strip()
+                if not desc:
+                    continue
+                # Use description as player_name proxy for dedup
+                key = (
+                    desc.lower()[:60],
+                    tc.get('year') or '',
+                    tc.get('card_num') or '',
+                )
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+
+                card = {
+                    'raw_line':      tc.get('raw_line', ''),
+                    'description':   desc,
+                    'year':          tc.get('year'),
+                    'card_num':      tc.get('card_num'),
+                    'grader':        tc.get('grader'),
+                    'grade':         tc.get('grade'),
+                    'player_name':   desc,   # best guess from text
+                    'set_name':      None,
+                    'parallel':      None,
+                    'auto':          False,
+                    'patch':         False,
+                    'serial_number': None,
+                    'sport':         None,
+                    'team':          None,
+                    'rookie':        False,
+                    'confidence':    'medium',
+                    '_image_url':    '',
+                    '_source':       'text',
+                }
+                all_cards.append(card)
+                yield _evt({'type': 'card', 'image_url': '', 'card': card})
+    except Exception:
+        pass  # description parsing is best-effort
 
     # ── Cache and signal completion ────────────────────────────────────────────
     save_cached(item_id, {
