@@ -407,27 +407,33 @@ _SKIP_WORDS = {
     'item number', 'category', 'brand new', 'pre-owned', 'price:',
     'postage', 'handling', 'estimated delivery', 'read more', 'show more',
     'sold by', 'ships from', 'top rated',
+    # eBay profile / boilerplate
+    'joined', 'member since', 'positive feedback', 'items sold',
+    'save this seller', 'contact seller', 'visit store',
+    # Lot-level description lines (not individual cards)
+    'card lot', 'card lots', 'rookies', 'inserts', '+ rookies',
+    'all cards', 'every card', 'cards included', 'cards are',
+    'guaranteed', 'nfl cards', 'nba cards', 'mlb cards',
+    'mixed lot', 'sports cards', 'sport cards',
+    # Navigation / UI chrome from Firecrawl
+    'home page', 'sign in', 'register', 'my ebay', 'daily deals',
+    'help & contact', 'watchlist', 'recently viewed',
 }
 
 def _clean_markdown(text: str) -> str:
     """
     Strip Firecrawl markdown artifacts so card text is clean for parsing.
-
-    Handles:
-      - Markdown links: [Card Name](https://...) → Card Name
-      - Markdown headers: ### Some Header → Some Header
-      - Inline code/bold/italic: `text`, **text**, *text*, ~~text~~
-      - Bare URLs: https://... or http://...
-      - HTML entities: &amp; &lt; &gt; &nbsp; etc.
     """
+    # 0. Strip markdown IMAGES first: ![alt](url) → '' (not the alt text)
+    text = re.sub(r'!\[[^\]]*\]\([^)]*\)', '', text)
     # 1. Strip markdown links: [text](url) → text
     text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
-    # 2. Strip markdown headers (###, ##, #)
-    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
-    # 3. Strip inline markdown formatting (*bold*, _italic_, ~~strike~~, `code`)
-    text = re.sub(r'[*_`~]+', '', text)
-    # 4. Strip bare URLs
+    # 2. Strip bare URLs
     text = re.sub(r'https?://\S+', '', text)
+    # 3. Strip markdown headers (###, ##, #)
+    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
+    # 4. Strip inline markdown formatting (*bold*, _italic_, ~~strike~~, `code`)
+    text = re.sub(r'[*_`~]+', '', text)
     # 5. Strip HTML entities
     text = re.sub(r'&\w+;', ' ', text)
     # 6. Strip table separators (|---|---|)

@@ -332,24 +332,130 @@ def identify_cards_grid(image_path: str, model: str = _DEFAULT_MODEL) -> list:
         return [card]
 
 
+def _split_image_quadrants(b64_data: str) -> list:
+    """
+    Split a base64-encoded image into 4 quadrants using Pillow.
+
+    Returns a list of tuples:
+        (tile_b64, 'image/jpeg', col_pct, row_pct, tile_w_pct, tile_h_pct)
+    where col_pct / row_pct are the top-left corner of the tile as a percentage
+    of the full image, and tile_w/h_pct are the tile dimensions as percentages.
+
+    Returns [] if Pillow is unavailable or the split fails.
+    """
+    try:
+        from PIL import Image
+        import io as _io
+
+        raw = base64.b64decode(b64_data)
+        img = Image.open(_io.BytesIO(raw)).convert('RGB')
+        w, h = img.size
+        hw, hh = w // 2, h // 2
+
+        tiles = [
+            # (crop box,                col_pct, row_pct, tw_pct, th_pct)
+            ((0,   0,   hw,  hh),       0.0,     0.0,    50.0,   50.0),
+            ((hw,  0,   w,   hh),      50.0,     0.0,    50.0,   50.0),
+            ((0,   hh,  hw,  h),        0.0,    50.0,    50.0,   50.0),
+            ((hw,  hh,  w,   h),       50.0,    50.0,    50.0,   50.0),
+        ]
+
+        result = []
+        for (left, top, right, bottom), col_pct, row_pct, tw_pct, th_pct in tiles:
+            tile = img.crop((left, top, right, bottom))
+            buf  = _io.BytesIO()
+            tile.save(buf, format='JPEG', quality=88)
+            t_b64 = base64.b64encode(buf.getvalue()).decode('ascii')
+            result.append((t_b64, 'image/jpeg', col_pct, row_pct, tw_pct, th_pct))
+
+        return result
+    except Exception:
+        return []
+
+
+def _remap_bbox_to_full(
+    bbox,
+    col_pct: float,
+    row_pct: float,
+    tw_pct: float,
+    th_pct: float,
+):
+    """
+    Convert a bbox (percentages relative to a tile) to percentages relative
+    to the full original image.
+
+    Example: tile is the top-left quadrant (col_pct=0, row_pct=0, tw=50, th=50).
+    A card at [20, 10, 80, 90] within that tile maps to [10, 5, 40, 45] in the
+    full image.
+    """
+    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+        return None
+    x1, y1, x2, y2 = [float(v) for v in bbox]
+    return [
+        round(col_pct + (x1 / 100.0) * tw_pct, 1),
+        round(row_pct + (y1 / 100.0) * th_pct, 1),
+        round(col_pct + (x2 / 100.0) * tw_pct, 1),
+        round(row_pct + (y2 / 100.0) * th_pct, 1),
+    ]
+
+
 def identify_cards_from_url(image_url: str, model: str = _DEFAULT_MODEL) -> list:
     """
     Identify all cards visible in an image at a URL.
 
-    Downloads the image, then calls identify_cards_grid.
-    Returns a list of card dicts.
+    For grid/lot photos (3+ readable cards found), automatically splits the
+    image into 4 quadrants and runs Vision on each piece.  This dramatically
+    improves accuracy for dense 24-card grid photos because each quadrant
+    shows only ~6 cards at larger size.
+
+    Bounding boxes from quadrant passes are remapped to full-image percentages
+    so crop thumbnails point to the correct region of the original photo.
     """
     try:
         b64, mime = _url_to_b64(image_url)
-        text = _call_vision_api(b64, mime, _GRID_PROMPT, model=model)
-        raw  = _parse_json_response(text)
-        if isinstance(raw, dict):
-            raw = [raw]
-        return [_normalise_card(r) for r in raw if isinstance(r, dict)]
     except Exception as exc:
         card = dict(EMPTY_CARD)
         card['error'] = str(exc)
         return [card]
+
+    def _call(img_b64: str, img_mime: str) -> list:
+        """Inner helper: call Vision + parse, never raises."""
+        try:
+            text = _call_vision_api(img_b64, img_mime, _GRID_PROMPT, model=model)
+            raw  = _parse_json_response(text)
+            if isinstance(raw, dict):
+                raw = [raw]
+            return [r for r in raw if isinstance(r, dict)]
+        except Exception:
+            return []
+
+    # ── Pass 1: full image ─────────────────────────────────────────────────────
+    raw_list   = _call(b64, mime)
+    all_cards  = [_normalise_card(r) for r in raw_list]
+
+    readable   = [c for c in all_cards
+                  if (c.get('player_name') or '').strip() and not c.get('error')]
+
+    # ── Pass 2: quadrant splits (only for grid photos) ─────────────────────────
+    # If Vision found 3+ readable cards the image is a multi-card grid.
+    # Re-run on each quadrant so Vision sees ~6 cards at larger scale,
+    # catching the cards it missed in the full-image pass.
+    if len(readable) >= 3:
+        quadrants = _split_image_quadrants(b64)
+        for q_b64, q_mime, col_pct, row_pct, tw_pct, th_pct in quadrants:
+            q_raw = _call(q_b64, q_mime)
+            for r in q_raw:
+                # Remap bbox from tile-relative to full-image percentages
+                # BEFORE _normalise_card validates + stores it.
+                raw_bbox = r.get('bbox')
+                if isinstance(raw_bbox, (list, tuple)) and len(raw_bbox) == 4:
+                    r['bbox'] = _remap_bbox_to_full(
+                        raw_bbox, col_pct, row_pct, tw_pct, th_pct
+                    )
+                all_cards.append(_normalise_card(r))
+            time.sleep(0.5)   # gentle rate-limiting between quadrant calls
+
+    return all_cards
 
 
 def identify_cards_from_urls(
