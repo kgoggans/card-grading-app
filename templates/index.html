@@ -1,0 +1,2885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sports Card Grading App - Custom Grade Estimator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .upload-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .upload-box {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+            background: #f8f9ff;
+        }
+        
+        .upload-box:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+            transform: translateY(-2px);
+        }
+
+        .upload-box.drag-over {
+            border-color: #2b6cb0;
+            background: #e7f3ff;
+            transform: translateY(-1px);
+        }
+        
+        .upload-box h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        .upload-box input[type="file"] {
+            display: none;
+        }
+        
+        .upload-icon {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+        
+        .preview-image {
+            max-width: 100%;
+            max-height: 300px;
+            margin-top: 15px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .grade-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 50px;
+            font-size: 1.2em;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: block;
+            margin: 0 auto;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .grade-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        .grade-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .results {
+            margin-top: 40px;
+            padding: 30px;
+            background: #f8f9ff;
+            border-radius: 15px;
+            display: none;
+        }
+        
+        .results.show {
+            display: block;
+            animation: fadeIn 0.5s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .grade-display {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .grade-number {
+            font-size: 3em;
+            font-weight: bold;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1.2;
+        }
+        
+        .grade-label {
+            font-size: 1.5em;
+            color: #667eea;
+            margin-top: 10px;
+        }
+        
+        .grade-description {
+            font-size: 1em;
+            color: #555;
+            margin-top: 10px;
+            line-height: 1.6;
+        }
+        
+        .details {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .debug-panel {
+            background: #fff;
+            border: 1px solid #dfe6ff;
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 18px;
+        }
+
+        .debug-panel h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1em;
+        }
+
+        .debug-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            font-size: 0.95em;
+            color: #333;
+        }
+
+        .debug-item {
+            background: #f8f9ff;
+            border-radius: 8px;
+            padding: 10px;
+            line-height: 1.5;
+        }
+
+        .debug-warning {
+            background: #fff3cd;
+            color: #7a5d00;
+            border: 1px solid #ffe69c;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 10px;
+            font-size: 0.92em;
+            display: none;
+        }
+        
+        .details h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+        
+        .details pre {
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            line-height: 1.6;
+            color: #333;
+        }
+        
+        .category-scores {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .score-item {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid #e0e0e0;
+        }
+        
+        .score-item h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+            text-transform: uppercase;
+        }
+        
+        .score-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #764ba2;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .loading.show {
+            display: block;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error {
+            background: #ff6b6b;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .error.show {
+            display: block;
+        }
+
+        .success {
+            background: #2ecc71;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .success.show {
+            display: block;
+        }
+
+        .training-panel {
+            margin-top: 20px;
+            background: #f8f9ff;
+            border: 2px solid #dfe6ff;
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .training-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .training-controls input,
+        .training-controls select {
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #d1d9ff;
+        }
+
+        .save-sample-button {
+            background: #2b6cb0;
+            color: white;
+            border: none;
+            padding: 12px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .save-sample-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .dataset-stats {
+            margin-top: 8px;
+            font-size: 0.92em;
+            color: #38445a;
+        }
+
+        .bulk-training {
+            margin-top: 14px;
+            border-top: 1px solid #d9e2ff;
+            padding-top: 14px;
+        }
+
+        .bulk-files {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .bulk-files input,
+        .bulk-files select {
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #d1d9ff;
+            background: #fff;
+        }
+
+        .bulk-summary {
+            margin-top: 8px;
+            font-size: 0.9em;
+            color: #4a5568;
+        }
+        
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 5px;
+        }
+        
+        .info-box h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .info-box ul {
+            margin-left: 20px;
+            line-height: 1.8;
+        }
+        
+        footer {
+            background: #f8f9ff;
+            padding: 20px;
+            text-align: center;
+            color: #666;
+        }
+        
+        @media (max-width: 768px) {
+            .upload-section {
+                grid-template-columns: 1fr;
+            }
+
+            header h1 {
+                font-size: 1.8em;
+            }
+
+            .category-scores {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ===== TAB NAVIGATION ===== */
+        .tab-bar {
+            display: flex;
+            background: linear-gradient(135deg, #5a6fd6 0%, #6a3d8f 100%);
+            padding: 0 20px;
+            gap: 0;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .tab-bar::-webkit-scrollbar { display: none; }
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.7);
+            padding: 14px 22px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            border-bottom: 3px solid transparent;
+            transition: color 0.2s, border-color 0.2s, background 0.2s;
+            letter-spacing: 0.02em;
+        }
+        .tab-btn:hover {
+            color: rgba(255, 255, 255, 0.95);
+            background: rgba(255, 255, 255, 0.08);
+        }
+        .tab-btn.active {
+            color: #ffffff;
+            border-bottom: 3px solid #ffffff;
+            background: rgba(255, 255, 255, 0.12);
+        }
+        .tab-utility-bar {
+            padding: 0 40px;
+        }
+        .tab-panel {
+            display: none;
+        }
+        .tab-panel.active {
+            display: block;
+            animation: fadeIn 0.25s ease;
+        }
+        @media (max-width: 600px) {
+            .tab-btn {
+                padding: 11px 13px;
+                font-size: 0.82em;
+            }
+            .tab-utility-bar {
+                padding: 0 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏆 Sports Card Grading App</h1>
+            <p>AI-Powered Custom Grade Estimator (100-1000 Point Scale)</p>
+        </header>
+
+        <!-- TAB NAVIGATION -->
+        <nav class="tab-bar" role="tablist">
+            <button class="tab-btn active" data-tab="tab-grade" role="tab">Grade Card</button>
+            <button class="tab-btn" data-tab="tab-dealfinder" role="tab">Deal Finder</button>
+            <button class="tab-btn" data-tab="tab-rawopps" role="tab">Raw Grading Opps</button>
+            <button class="tab-btn" data-tab="tab-training" role="tab">Training</button>
+            <button class="tab-btn" data-tab="external" data-href="/lot-analyzer" role="tab">📊 Lot Analyzer</button>
+            <button class="tab-btn" data-tab="external" data-href="/lot-cataloger" role="tab">📋 Lot Cataloger</button>
+        </nav>
+
+        <!-- SHARED UTILITY BAR (visible on all tabs) -->
+        <div class="tab-utility-bar">
+            <div id="ml-status-bar" style="display:none; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #e0e0e0; padding: 10px 20px; border-radius: 10px; margin: 10px 0; font-size: 0.85em; align-items: center; gap: 10px;">
+                <span id="ml-dot" style="width:10px; height:10px; border-radius:50%; background:#555; display:inline-block;"></span>
+                <span id="ml-status-text">AI Model: Loading...</span>
+            </div>
+            <div class="error" id="error"></div>
+            <div class="success" id="success"></div>
+        </div>
+
+        <!-- GRADE TAB -->
+        <div id="tab-grade" class="tab-panel active">
+        <div class="content">
+            <div class="info-box">
+                <h3>How to Use:</h3>
+                <ul>
+                    <li>Upload clear, well-lit photos of both the front and back of your sports card</li>
+                    <li>Ensure the entire card is visible with minimal glare or shadows</li>
+                    <li>The AI will analyze the card condition and provide a grade estimate on a 100-1000 point scale</li>
+                    <li>Review the detailed breakdown of corner, edge, surface, and centering scores</li>
+                </ul>
+            </div>
+            
+            <div class="upload-section">
+                <div class="upload-box" id="frontUploadBox" data-input-id="frontImage">
+                    <div class="upload-icon">📸</div>
+                    <h3>Front of Card</h3>
+                    <p>Click or drag & drop front image</p>
+                    <input type="file" id="frontImage" accept="image/*" onchange="previewImage(this, 'frontPreview')">
+                    <img id="frontPreview" class="preview-image" style="display:none;">
+                </div>
+                
+                <div class="upload-box" id="backUploadBox" data-input-id="backImage">
+                    <div class="upload-icon">📸</div>
+                    <h3>Back of Card</h3>
+                    <p>Click or drag & drop back image</p>
+                    <input type="file" id="backImage" accept="image/*" onchange="previewImage(this, 'backPreview')">
+                    <img id="backPreview" class="preview-image" style="display:none;">
+                </div>
+            </div>
+            
+            <!-- Slab Mode Toggle -->
+            <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin: 10px 0;">
+              <label class="slab-toggle-label" style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.95em; color:#555;">
+                <div style="position:relative; width:44px; height:24px;">
+                  <input type="checkbox" id="slabModeToggle" style="opacity:0; width:0; height:0; position:absolute;"
+                         onchange="onSlabModeChange(this.checked)">
+                  <span id="slabToggleTrack" style="position:absolute; inset:0; border-radius:12px; background:#ccc; transition:0.3s;"></span>
+                  <span id="slabToggleThumb" style="position:absolute; left:2px; top:2px; width:20px; height:20px; border-radius:50%; background:white; transition:0.3s; box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span>
+                </div>
+                <span>Card is in a PSA Slab</span>
+              </label>
+            </div>
+
+            <!-- Slab mode instructions (hidden by default) -->
+            <div id="slabInstructions" style="display:none; background:#e8f4fd; border-left:4px solid #667eea; padding:12px 16px; border-radius:8px; margin:8px 0; font-size:0.88em; color:#333;">
+              <strong>Slab Mode:</strong> Upload photos of the front and back of the slab. The AI will automatically read the PSA grade from the label and analyze only the card — not the plastic case.
+              <div style="margin-top:8px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9em;">
+                  <input type="checkbox" id="autoSaveSlabToggle" checked style="cursor:pointer;">
+                  Auto-save as training sample (uses OCR-detected grade)
+                </label>
+              </div>
+            </div>
+
+            <button class="grade-button" id="gradeButton" onclick="gradeCard()" disabled>
+                Grade My Card
+            </button>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Analyzing your card... This may take a moment.</p>
+            </div>
+
+            <div class="results" id="results">
+                <div class="grade-display">
+                    <div class="grade-number" id="gradeNumber">-</div>
+                    <div class="grade-label">PSA Grade</div>
+                    <div id="ml-grade-info" style="display:none; font-size: 0.8em; color: #888; margin-top: 4px; text-align: center;"></div>
+                    <div class="grade-description" id="gradeDescription"></div>
+                </div>
+                
+                <div class="category-scores" id="categoryScores"></div>
+
+                <div class="debug-panel" id="centeringDebug" style="display: none;">
+                    <h3>Centering Debug</h3>
+                    <div class="debug-warning" id="centeringWarning"></div>
+                    <div class="debug-grid" id="centeringDebugGrid"></div>
+                </div>
+                
+                <div class="details">
+                    <h3>Detailed Analysis</h3>
+                    <pre id="detailsText"></pre>
+                </div>
+            </div>
+
+            <!-- Card Identification Panel -->
+            <div id="card-id-panel" style="display:none; background: white; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 25px; margin-top: 20px;">
+              <h3 style="color: #667eea; margin: 0 0 15px 0; font-size: 1.2em;">🔍 Card Identified</h3>
+              <div id="card-id-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+                <!-- filled by JS -->
+              </div>
+              <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+                <label style="font-weight: 600; color: #555; font-size: 0.9em;">eBay Search Query</label>
+                <div style="display: flex; gap: 8px; margin-top: 6px;">
+                  <input id="comps-query-input" type="text" style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.9em;" placeholder="Edit query if needed...">
+                  <button onclick="fetchComps()" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; padding: 8px 18px; border-radius: 8px; cursor: pointer; font-weight: 600;">Get Comps</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Market Comps Panel -->
+            <div id="comps-panel" style="display:none; background: white; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 25px; margin-top: 20px;">
+              <h3 style="color: #667eea; margin: 0 0 15px 0; font-size: 1.2em;">💰 Market Comps (eBay Sold)</h3>
+              <div id="comps-loading" style="display:none; text-align:center; padding: 20px; color: #888;">Fetching sold listings...</div>
+              <div id="comps-not-configured" style="display:none; background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px 16px; border-radius: 6px; font-size: 0.9em;">
+                eBay API not configured. Set the <strong>EBAY_APP_ID</strong> environment variable to enable price comps.
+                <a href="https://developer.ebay.com/" target="_blank" style="color: #667eea;">Get a free key →</a>
+              </div>
+              <div id="comps-content" style="display:none;">
+                <div id="comps-stats" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;"></div>
+                <div style="overflow-x: auto;">
+                  <table id="comps-table" style="width: 100%; border-collapse: collapse; font-size: 0.88em;">
+                    <thead>
+                      <tr style="background: #f8f8ff; color: #555;">
+                        <th style="padding: 10px; text-align: left; border-bottom: 2px solid #eee;">Title</th>
+                        <th style="padding: 10px; text-align: right; border-bottom: 2px solid #eee;">Sold Price</th>
+                        <th style="padding: 10px; text-align: center; border-bottom: 2px solid #eee;">Date</th>
+                        <th style="padding: 10px; text-align: center; border-bottom: 2px solid #eee;">Link</th>
+                      </tr>
+                    </thead>
+                    <tbody id="comps-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div id="comps-error" style="display:none; color: #dc3545; font-size: 0.9em; padding: 10px;"></div>
+            </div>
+        </div>
+        </div> <!-- /tab-grade -->
+
+        <!-- ================================================================
+             DEAL FINDER TAB
+             ================================================================ -->
+        <div id="tab-dealfinder" class="tab-panel">
+        <div style="padding: 0 40px 40px 40px;">
+          <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 16px; padding: 28px; color: #e0e0e0;">
+            <h2 style="margin: 0 0 6px 0; font-size: 1.4em; color: #fff;">🔎 Deal Finder</h2>
+            <p style="margin: 0 0 20px 0; font-size: 0.88em; color: #aaa;">Compare active eBay listings to recent sold prices. See raw flip profit and graded profit potential.</p>
+
+            <!-- Search history -->
+            <div id="df-history-bar" style="display:none; margin-bottom: 12px;">
+              <span style="font-size: 0.78em; color: #666; margin-right: 6px;">Recent:</span>
+              <span id="df-history-chips"></span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 10px; align-items: end; flex-wrap: wrap;">
+              <div>
+                <label style="font-size: 0.82em; color: #aaa; display: block; margin-bottom: 4px;">Card Search Query</label>
+                <input id="df-query" type="text" placeholder="e.g. 2021 Topps Chrome Mike Trout #27"
+                  style="width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid #444; background: #0f3460; color: #fff; font-size: 0.92em; outline: none;">
+              </div>
+              <div>
+                <label style="font-size: 0.82em; color: #aaa; display: block; margin-bottom: 4px;">Grade Estimate</label>
+                <select id="df-grade" style="padding: 10px 12px; border-radius: 8px; border: 1px solid #444; background: #0f3460; color: #fff; font-size: 0.9em;">
+                  <option value="">All Grades</option>
+                  <option value="10">PSA 10</option>
+                  <option value="9">PSA 9</option>
+                  <option value="8">PSA 8</option>
+                  <option value="7">PSA 7</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size: 0.82em; color: #aaa; display: block; margin-bottom: 4px;">Listing Type</label>
+                <select id="df-listing-type" style="padding: 10px 12px; border-radius: 8px; border: 1px solid #444; background: #0f3460; color: #fff; font-size: 0.9em;">
+                  <option value="">All Types</option>
+                  <option value="FIXED_PRICE">Buy It Now</option>
+                  <option value="AUCTION">Auction</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size: 0.82em; color: #aaa; display: block; margin-bottom: 4px;">Grading Cost ($)</label>
+                <input id="df-grading-cost" type="number" value="25" min="1" max="500"
+                  style="width: 90px; padding: 10px 10px; border-radius: 8px; border: 1px solid #444; background: #0f3460; color: #fff; font-size: 0.9em; outline: none;">
+              </div>
+              <button onclick="runDealFinder()"
+                style="padding: 10px 22px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; border-radius: 8px; font-size: 0.95em; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                Find Deals
+              </button>
+            </div>
+
+            <!-- Exclude keywords row -->
+            <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 220px;">
+                <label style="font-size: 0.78em; color: #666; display: block; margin-bottom: 3px;">Exclude titles containing (comma-separated)</label>
+                <input id="df-exclude" type="text" value="chase pack,chaser pack,lot,repack,mystery,blind"
+                  placeholder="e.g. chase pack, lot, repack"
+                  style="width: 100%; padding: 7px 12px; border-radius: 7px; border: 1px solid #333; background: #0a0a1a; color: #bbb; font-size: 0.85em; outline: none;">
+              </div>
+            </div>
+
+            <!-- Loading -->
+            <div id="df-loading" style="display:none; text-align:center; padding: 30px 0; color: #aaa;">
+              <div style="font-size: 1.5em; margin-bottom: 8px;">⏳</div>
+              <div>Scanning eBay listings and comparing to sold data... this takes ~15 seconds.</div>
+            </div>
+
+            <!-- Error -->
+            <div id="df-error" style="display:none; background: #3d0000; border-left: 4px solid #dc3545; padding: 12px 16px; border-radius: 6px; margin-top: 16px; font-size: 0.9em; color: #ff8080;"></div>
+
+            <!-- Summary stats bar -->
+            <div id="df-summary" style="display:none; margin-top: 20px;">
+              <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 16px;">
+                <div style="background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px 18px; text-align: center; min-width: 100px;">
+                  <div id="df-stat-raw-median" style="font-size: 1.4em; font-weight: 700; color: #90caf9;">—</div>
+                  <div style="font-size: 0.75em; color: #888; margin-top: 2px;">Raw Median Sold</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px 18px; text-align: center; min-width: 100px;">
+                  <div id="df-stat-psa9" style="font-size: 1.4em; font-weight: 700; color: #a5d6a7;">—</div>
+                  <div style="font-size: 0.75em; color: #888; margin-top: 2px;">PSA 9 Median</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px 18px; text-align: center; min-width: 100px;">
+                  <div id="df-stat-psa10" style="font-size: 1.4em; font-weight: 700; color: #ffcc80;">—</div>
+                  <div style="font-size: 0.75em; color: #888; margin-top: 2px;">PSA 10 Median</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px 18px; text-align: center; min-width: 100px;">
+                  <div id="df-stat-buy-count" style="font-size: 1.4em; font-weight: 700; color: #80cbc4;">—</div>
+                  <div style="font-size: 0.75em; color: #888; margin-top: 2px;">BUY Opportunities</div>
+                </div>
+                <div id="df-stat-trend-wrap" style="display:none; background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px 18px; text-align: center; min-width: 130px;">
+                  <div id="df-stat-trend" style="font-size: 1.4em; font-weight: 700;">—</div>
+                  <div id="df-stat-trend-sub" style="font-size: 0.7em; color: #aaa; margin-top: 1px;"></div>
+                  <div style="font-size: 0.75em; color: #888; margin-top: 2px;">Raw Price Trend</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Comps warning (rate limit etc) -->
+            <div id="df-comps-warning" style="display:none; background: #3d2600; border-left: 4px solid #ff9800; padding: 10px 14px; border-radius: 6px; margin-top: 12px; font-size: 0.85em; color: #ffcc80;"></div>
+
+            <!-- Results table -->
+            <div id="df-results" style="display:none; overflow-x: auto; margin-top: 8px;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 0.84em; color: #ddd;">
+                <thead>
+                  <tr style="background: rgba(255,255,255,0.07); text-align: left;">
+                    <th style="padding: 10px 8px; border-bottom: 1px solid #333; white-space:nowrap;">Verdict</th>
+                    <th style="padding: 10px 8px; border-bottom: 1px solid #333;">Card / Listing</th>
+                    <th style="padding: 10px 8px; border-bottom: 1px solid #333; text-align:right; white-space:nowrap;">Ask Price</th>
+                    <th style="padding: 10px 8px; border-bottom: 1px solid #333; text-align:right; white-space:nowrap;">Raw Flip Profit</th>
+                    <th style="padding: 10px 8px; border-bottom: 1px solid #333; text-align:right; white-space:nowrap;">Best Grade Profit</th>
+                    <th style="padding: 10px 8px; border-bottom: 1px solid #333; text-align:center; white-space:nowrap;">Raw ROI</th>
+                    <th style="padding: 10px 8px; border-bottom: 1px solid #333; text-align:center;">Link</th>
+                  </tr>
+                </thead>
+                <tbody id="df-tbody"></tbody>
+              </table>
+            </div>
+
+            <div id="df-empty" style="display:none; text-align:center; padding: 30px 0; color: #666; font-size: 0.9em;">No active listings found for this search.</div>
+          </div>
+        </div>
+        </div> <!-- /tab-dealfinder -->
+
+        <!-- ================================================================
+             RAW GRADING OPPORTUNITIES TAB
+             ================================================================ -->
+        <div id="tab-rawopps" class="tab-panel">
+        <div style="padding: 0 40px 40px 40px;">
+          <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 16px; padding: 28px; color: #e0e0e0;">
+            <h2 style="margin: 0 0 6px 0; font-size: 1.4em; color: #fff;">🎯 Raw Grading Opportunities</h2>
+            <p style="margin: 0 0 20px 0; font-size: 0.88em; color: #aaa;">Find raw (ungraded) cards with strong PSA grading upside. Filters out already-graded slabs automatically.</p>
+
+            <div style="display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: end; flex-wrap: wrap;">
+              <div>
+                <label style="font-size: 0.82em; color: #aaa; display: block; margin-bottom: 4px;">Card Search Query</label>
+                <input id="ro-query" type="text" placeholder="e.g. 1986 Topps Michael Jordan #57"
+                  style="width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid #444; background: #0f3460; color: #fff; font-size: 0.92em; outline: none;">
+              </div>
+              <div>
+                <label style="font-size: 0.82em; color: #aaa; display: block; margin-bottom: 4px;">Max Buy Price ($)</label>
+                <input id="ro-max-price" type="number" value="100" min="1" max="10000"
+                  style="width: 100px; padding: 10px 10px; border-radius: 8px; border: 1px solid #444; background: #0f3460; color: #fff; font-size: 0.9em; outline: none;">
+              </div>
+              <div>
+                <label style="font-size: 0.82em; color: #aaa; display: block; margin-bottom: 4px;">Grading Cost ($)</label>
+                <input id="ro-grading-cost" type="number" value="25" min="1" max="500"
+                  style="width: 90px; padding: 10px 10px; border-radius: 8px; border: 1px solid #444; background: #0f3460; color: #fff; font-size: 0.9em; outline: none;">
+              </div>
+              <button onclick="runRawOpps()"
+                style="padding: 10px 22px; background: linear-gradient(135deg, #2f855a, #276749); color: white; border: none; border-radius: 8px; font-size: 0.95em; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                Scan Raw Cards
+              </button>
+            </div>
+
+            <!-- Loading -->
+            <div id="ro-loading" style="display:none; text-align:center; padding: 30px 0; color: #aaa;">
+              <div style="font-size: 1.5em; margin-bottom: 8px;">⏳</div>
+              <div>Scanning eBay for raw cards and analyzing grading potential... ~15 seconds.</div>
+            </div>
+
+            <!-- Error -->
+            <div id="ro-error" style="display:none; background: #3d0000; border-left: 4px solid #dc3545; padding: 12px 16px; border-radius: 6px; margin-top: 16px; font-size: 0.9em; color: #ff8080;"></div>
+
+            <!-- Summary stats bar -->
+            <div id="ro-summary" style="display:none; margin-top: 20px;">
+              <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 16px;">
+                <div style="background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px 18px; text-align: center; min-width: 100px;">
+                  <div id="ro-stat-raw-median" style="font-size: 1.4em; font-weight: 700; color: #90caf9;">—</div>
+                  <div style="font-size: 0.75em; color: #888; margin-top: 2px;">Raw Median Sold</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px 18px; text-align: center; min-width: 100px;">
+                  <div id="ro-stat-psa9" style="font-size: 1.4em; font-weight: 700; color: #a5d6a7;">—</div>
+                  <div style="font-size: 0.75em; color: #888; margin-top: 2px;">PSA 9 Median</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px 18px; text-align: center; min-width: 100px;">
+                  <div id="ro-stat-psa10" style="font-size: 1.4em; font-weight: 700; color: #ffcc80;">—</div>
+                  <div style="font-size: 0.75em; color: #888; margin-top: 2px;">PSA 10 Median</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px 18px; text-align: center; min-width: 100px;">
+                  <div id="ro-stat-grade-it-count" style="font-size: 1.4em; font-weight: 700; color: #80cbc4;">—</div>
+                  <div style="font-size: 0.75em; color: #888; margin-top: 2px;">Grade It Picks</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Results table -->
+            <div id="ro-results" style="display:none; overflow-x: auto; margin-top: 8px;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 0.84em; color: #ddd;">
+                <thead>
+                  <tr style="background: rgba(255,255,255,0.07); text-align: left;">
+                    <th style="padding: 10px 8px; border-bottom: 1px solid #333; white-space:nowrap;">Verdict</th>
+                    <th style="padding: 10px 8px; border-bottom: 1px solid #333;">Card / Listing</th>
+                    <th style="padding: 10px 8px; border-bottom: 1px solid #333; text-align:right; white-space:nowrap;">Ask Price</th>
+                    <th style="padding: 10px 8px; border-bottom: 1px solid #333; text-align:right; white-space:nowrap;">PSA 9 Profit</th>
+                    <th style="padding: 10px 8px; border-bottom: 1px solid #333; text-align:right; white-space:nowrap;">PSA 10 Profit</th>
+                    <th style="padding: 10px 8px; border-bottom: 1px solid #333; text-align:center; white-space:nowrap;">Confidence</th>
+                    <th style="padding: 10px 8px; border-bottom: 1px solid #333; text-align:center;">Link</th>
+                  </tr>
+                </thead>
+                <tbody id="ro-tbody"></tbody>
+              </table>
+            </div>
+
+            <div id="ro-empty" style="display:none; text-align:center; padding: 30px 0; color: #666; font-size: 0.9em;">No raw card listings found. Try a broader search term.</div>
+          </div>
+        </div>
+        </div> <!-- /tab-rawopps -->
+
+        <!-- ================================================================
+             TRAINING TAB
+             ================================================================ -->
+        <div id="tab-training" class="tab-panel">
+        <div class="content">
+            <div class="training-panel">
+                <h3 style="color:#2b6cb0;">Build Training Set (PSA-Labeled)</h3>
+                <p style="margin-top:6px;color:#4a5568;">Use your current uploaded front/back photos and save the known PSA grade.</p>
+                <div style="margin-top:10px;">
+                    <div style="display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;margin-bottom:8px;">
+                        <select id="psaGradeLabel" style="flex:1;min-width:180px;padding:10px;border-radius:8px;border:1px solid #d1d9ff;">
+                            <option value="">Select PSA Grade</option>
+                            <option value="10">PSA 10 &mdash; GEM-MT</option>
+                            <option value="9">PSA 9 &mdash; MINT</option>
+                            <option value="8.5">PSA 8.5 &mdash; NM-MT+</option>
+                            <option value="8">PSA 8 &mdash; NM-MT</option>
+                            <option value="7.5">PSA 7.5 &mdash; NM+</option>
+                            <option value="7">PSA 7 &mdash; NM</option>
+                            <option value="6.5">PSA 6.5 &mdash; EX-MT+</option>
+                            <option value="6">PSA 6 &mdash; EX-MT</option>
+                            <option value="5.5">PSA 5.5 &mdash; EX+</option>
+                            <option value="5">PSA 5 &mdash; EX</option>
+                            <option value="4.5">PSA 4.5 &mdash; VG-EX+</option>
+                            <option value="4">PSA 4 &mdash; VG-EX</option>
+                            <option value="3.5">PSA 3.5 &mdash; VG+</option>
+                            <option value="3">PSA 3 &mdash; VG</option>
+                            <option value="2.5">PSA 2.5 &mdash; GOOD+</option>
+                            <option value="2">PSA 2 &mdash; GOOD</option>
+                            <option value="1.5">PSA 1.5 &mdash; FR</option>
+                            <option value="1">PSA 1 &mdash; POOR</option>
+                        </select>
+                        <button id="autoDetectGradeBtn" onclick="autoDetectGrade()"
+                            style="padding:10px 16px;background:#3182ce;color:#fff;border:none;
+                                   border-radius:8px;cursor:pointer;font-size:0.95em;font-weight:600;
+                                   white-space:nowrap;"
+                            title="Read the PSA grade directly from the slab photo using OCR">
+                            🔍 Auto-Detect Grade
+                        </button>
+                    </div>
+                    <div id="autoDetectMsg" style="font-size:0.87em;color:#2b6cb0;min-height:18px;margin-bottom:8px;"></div>
+                    <div class="training-controls">
+                        <input type="text" id="cardTitle" placeholder="Card title (optional)">
+                        <input type="text" id="cardNotes" placeholder="Notes (optional)">
+                        <button class="save-sample-button" id="saveSampleButton" onclick="saveLabeledSample()" disabled>
+                            Save Labeled Sample
+                        </button>
+                    </div>
+                </div>
+                <div class="dataset-stats" id="datasetStats">Dataset: loading...</div>
+
+                <div class="bulk-training">
+                    <h4 style="color:#2b6cb0; margin-bottom:6px;">Bulk Upload (Training Only)</h4>
+                    <p style="color:#4a5568; font-size:0.92em;">Upload multiple front/back files, one known PSA grade for the batch.</p>
+                    <div class="bulk-files">
+                        <input type="file" id="bulkFrontImages" accept="image/*" multiple onchange="updateBulkSummary()">
+                        <input type="file" id="bulkBackImages" accept="image/*" multiple onchange="updateBulkSummary()">
+                        <select id="bulkPsaGrade">
+                            <option value="">Select PSA Grade (Batch)</option>
+                            <option value="8">PSA 8</option>
+                            <option value="9">PSA 9</option>
+                            <option value="10">PSA 10</option>
+                        </select>
+                        <input type="text" id="bulkTitlePrefix" placeholder="Title prefix (optional)">
+                        <input type="text" id="bulkNotes" placeholder="Notes for all pairs (optional)">
+                        <button class="save-sample-button" id="bulkSaveButton" onclick="saveBulkLabeledSamples()" disabled>
+                            Save Bulk Samples
+                        </button>
+                    </div>
+                    <div class="bulk-summary" id="bulkSummary">Bulk: waiting for files...</div>
+
+                    <div style="margin-top:12px; border-top:1px solid #d9e2ff; padding-top:12px;">
+                        <p style="color:#4a5568; font-size:0.92em;">Or import CSV with columns: <strong>front_image_url</strong>, <strong>back_image_url</strong>, optional <strong>psa_grade</strong>, <strong>card_title</strong>, <strong>notes</strong>.</p>
+                        <div class="bulk-files" style="margin-top:6px;">
+                            <input type="file" id="bulkCsvFile" accept=".csv,text/csv">
+                            <select id="bulkCsvDefaultGrade">
+                                <option value="">Default PSA Grade (optional)</option>
+                                <option value="8">PSA 8</option>
+                                <option value="9">PSA 9</option>
+                                <option value="10">PSA 10</option>
+                            </select>
+                            <button class="save-sample-button" id="bulkCsvSaveButton" onclick="saveBulkFromCsv()">
+                                Import CSV URLs
+                            </button>
+                        </div>
+                        <div class="bulk-summary" id="bulkCsvSummary">CSV import: waiting for file...</div>
+                    </div>
+
+                    <div style="margin-top:12px; border-top:1px solid #d9e2ff; padding-top:12px;">
+                        <p style="color:#4a5568; font-size:0.92em;">Or import from lot photos (many cards in one front image + one back image).</p>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px;">
+                            <div class="upload-box" id="lotFrontBox" data-input-id="lotFrontImage"
+                                style="padding:14px; min-height:80px; font-size:0.9em;">
+                                <div class="upload-icon" style="font-size:1.4em;">📸</div>
+                                <strong>Front Lot Photo</strong>
+                                <p style="margin:2px 0 0; font-size:0.82em; color:#718096;">Click or drag &amp; drop</p>
+                                <input type="file" id="lotFrontImage" accept="image/*" style="display:none;">
+                                <img id="lotFrontPreview" style="max-width:100%; max-height:80px; margin-top:6px; display:none; border-radius:4px;">
+                            </div>
+                            <div class="upload-box" id="lotBackBox" data-input-id="lotBackImage"
+                                style="padding:14px; min-height:80px; font-size:0.9em;">
+                                <div class="upload-icon" style="font-size:1.4em;">📸</div>
+                                <strong>Back Lot Photo</strong>
+                                <p style="margin:2px 0 0; font-size:0.82em; color:#718096;">Click or drag &amp; drop</p>
+                                <input type="file" id="lotBackImage" accept="image/*" style="display:none;">
+                                <img id="lotBackPreview" style="max-width:100%; max-height:80px; margin-top:6px; display:none; border-radius:4px;">
+                            </div>
+                        </div>
+                        <div class="bulk-files" style="margin-top:8px;">
+                            <select id="lotPsaGrade">
+                                <option value="">Select PSA Grade (Lot)</option>
+                                <option value="10">PSA 10</option>
+                                <option value="9">PSA 9</option>
+                                <option value="8.5">PSA 8.5</option>
+                                <option value="8">PSA 8</option>
+                                <option value="7.5">PSA 7.5</option>
+                                <option value="7">PSA 7</option>
+                                <option value="6">PSA 6</option>
+                                <option value="5">PSA 5</option>
+                                <option value="4">PSA 4</option>
+                                <option value="3">PSA 3</option>
+                                <option value="2">PSA 2</option>
+                                <option value="1">PSA 1</option>
+                            </select>
+                            <input type="text" id="lotTitlePrefix" placeholder="Lot title prefix (optional)">
+                            <input type="text" id="lotRows" placeholder="Rows (optional)">
+                            <input type="text" id="lotCols" placeholder="Cols (optional)">
+                            <input type="text" id="lotNotes" placeholder="Notes (optional)">
+                            <button class="save-sample-button" id="lotImportButton" onclick="saveLotLabeledSamples()">
+                                Import Lot Images
+                            </button>
+                        </div>
+                        <div class="bulk-summary" id="lotSummary">Lot import: waiting for images...</div>
+                    </div>
+
+                    <!-- eBay Auto-Import -->
+                    <div style="margin-top:12px; border-top:1px solid #d9e2ff; padding-top:12px;">
+                        <h4 style="color:#2b6cb0; margin-bottom:4px;">eBay Auto-Import (Bulk Train)</h4>
+                        <p style="color:#4a5568; font-size:0.92em; margin-bottom:8px;">
+                            Search completed eBay PSA listings, download card images, and auto-label them as training data.
+                            Images are extracted from slabs automatically. Uses the same image for front &amp; back.
+                        </p>
+                        <div class="bulk-files" style="grid-template-columns: 1fr;">
+                            <input type="text" id="ebayTrainQuery" placeholder='e.g. "Michael Jordan Topps 1986"'
+                                   style="font-size:0.95em;">
+                        </div>
+                        <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                            <strong style="font-size:0.9em; color:#4a5568;">Grades to fetch:</strong>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="ebay-grade-cb" value="10" checked> PSA 10</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="ebay-grade-cb" value="9" checked> PSA 9</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="ebay-grade-cb" value="8.5"> PSA 8.5</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="ebay-grade-cb" value="8" checked> PSA 8</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="ebay-grade-cb" value="7"> PSA 7</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="ebay-grade-cb" value="6"> PSA 6</label>
+                        </div>
+                        <div style="margin-top:8px; display:flex; gap:10px; align-items:center;">
+                            <label style="font-size:0.9em; color:#4a5568;">Max per grade:
+                                <input type="number" id="ebayMaxPerGrade" value="50" min="1" max="200"
+                                       style="width:70px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; margin-left:4px;">
+                            </label>
+                            <button class="save-sample-button" id="ebayTrainButton" onclick="runEbayBulkTrain()"
+                                    style="background: linear-gradient(135deg,#3182ce,#2b6cb0);">
+                                Fetch &amp; Train from eBay
+                            </button>
+                        </div>
+                        <div class="bulk-summary" id="ebayTrainStatus" style="margin-top:8px;">Ready.</div>
+                        <div id="ebayTrainResult" style="display:none; margin-top:8px; background:#f0fff4;
+                             border:1px solid #9ae6b4; border-radius:8px; padding:12px;
+                             font-size:0.88em; color:#22543d; line-height:1.7;"></div>
+                    </div>
+
+                    <!-- PWCC / Goldin Auction Import -->
+                    <div style="margin-top:12px; border-top:1px solid #d9e2ff; padding-top:12px;">
+                        <h4 style="color:#2b6cb0; margin-bottom:4px;">Auction House Auto-Import (High Quality)</h4>
+                        <p style="color:#4a5568; font-size:0.92em; margin-bottom:4px;">
+                            Fetch professional front+back photos from Fanatics Collect (formerly PWCC), Goldin, and Heritage Auctions.
+                            These sites block plain scrapers — uses <strong>Firecrawl</strong> to bypass protection.
+                        </p>
+                        <div id="firecrawlStatus" style="font-size:0.85em; margin-bottom:8px; padding:6px 10px;
+                             background:#fffbeb; border:1px solid #f6c90e; border-radius:6px; color:#744210;">
+                            Checking Firecrawl key...
+                        </div>
+                        <div class="bulk-files" style="grid-template-columns: 1fr;">
+                            <input type="text" id="auctionTrainQuery" placeholder='e.g. "Michael Jordan Fleer 1986"'
+                                   style="font-size:0.95em;">
+                        </div>
+                        <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                            <strong style="font-size:0.9em; color:#4a5568;">Grades to fetch:</strong>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-grade-cb" value="10" checked> PSA 10</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-grade-cb" value="9" checked> PSA 9</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-grade-cb" value="8.5"> PSA 8.5</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-grade-cb" value="8" checked> PSA 8</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-grade-cb" value="7"> PSA 7</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-grade-cb" value="6"> PSA 6</label>
+                        </div>
+                        <div style="margin-top:8px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <label style="font-size:0.9em; color:#4a5568;">Max per grade:
+                                <input type="number" id="auctionMaxPerGrade" value="50" min="1" max="500"
+                                       style="width:70px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; margin-left:4px;">
+                            </label>
+                            <label style="font-size:0.9em; color:#4a5568;">Sources:</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-source-cb" value="pwcc" checked> Fanatics/PWCC</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-source-cb" value="goldin" checked> Goldin</label>
+                            <label style="font-size:0.9em;"><input type="checkbox" class="auction-source-cb" value="heritage" checked> Heritage</label>
+                            <button class="save-sample-button" id="auctionTrainButton" onclick="runAuctionBulkTrain()"
+                                    style="background: linear-gradient(135deg,#6b46c1,#553c9a);">
+                                Fetch &amp; Train from Auctions
+                            </button>
+                        </div>
+                        <div class="bulk-summary" id="auctionTrainStatus" style="margin-top:8px;">Ready.</div>
+                        <div id="auctionTrainResult" style="display:none; margin-top:8px; background:#faf5ff;
+                             border:1px solid #d6bcfa; border-radius:8px; padding:12px;
+                             font-size:0.88em; color:#44337a; line-height:1.7;"></div>
+                    </div>
+                </div>
+
+                <!-- ====================================================
+                     VISION AI MODEL (EfficientNet-B0)
+                     ==================================================== -->
+                <div style="margin-top:16px; border-top:2px solid #805ad5; padding-top:14px;">
+                    <h4 style="color:#6b46c1; margin-bottom:4px;">Vision AI Model (EfficientNet-B0)</h4>
+                    <p style="color:#4a5568; font-size:0.92em; margin-bottom:10px;">
+                        Train a deep learning model that grades cards directly from pixels — no CV features needed.
+                        More accurate than the feature-based model once you have 500+ labeled images.
+                        Uses your Apple Silicon GPU (MPS) automatically.
+                    </p>
+                    <div id="visionModelStatus" style="font-size:0.88em; color:#4a5568; margin-bottom:8px;">
+                        Loading vision model status...
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <label style="font-size:0.9em; color:#4a5568;">Epochs:
+                            <input type="number" id="visionEpochs" value="15" min="5" max="50"
+                                   style="width:60px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; margin-left:4px;">
+                        </label>
+                        <button id="visionTrainBtn" onclick="runVisionTraining()"
+                                style="padding:10px 18px; background:linear-gradient(135deg,#6b46c1,#553c9a);
+                                       color:#fff; border:none; border-radius:8px; cursor:pointer;
+                                       font-size:0.95em; font-weight:600;">
+                            Train Vision Model
+                        </button>
+                        <span id="visionTrainStatus" style="font-size:0.88em; color:#4a5568;"></span>
+                    </div>
+                    <div id="visionProgressBar" style="display:none; margin-top:10px;">
+                        <div style="background:#e9d8fd; border-radius:8px; height:12px; overflow:hidden;">
+                            <div id="visionProgressFill" style="height:100%; background:linear-gradient(90deg,#6b46c1,#805ad5);
+                                 width:0%; transition:width 0.4s ease; border-radius:8px;"></div>
+                        </div>
+                        <div id="visionProgressLabel" style="font-size:0.82em; color:#6b46c1; margin-top:4px;"></div>
+                    </div>
+                    <div id="visionTrainResult" style="display:none; margin-top:10px; background:#faf5ff;
+                         border:1px solid #d6bcfa; border-radius:8px; padding:12px;
+                         font-size:0.9em; color:#44337a; line-height:1.7;"></div>
+                </div>
+
+                <!-- ====================================================
+                     AUTO-CALIBRATE FROM TRAINING DATA
+                     ==================================================== -->
+                <div style="margin-top:16px; border-top:2px solid #3182ce; padding-top:14px;">
+                    <h4 style="color:#2b6cb0; margin-bottom:4px;">🧠 Auto-Calibrate Grading AI</h4>
+                    <p style="color:#4a5568; font-size:0.92em; margin-bottom:10px;">
+                        Re-grade all your saved PSA cards and tune the AI scoring weights to match real grades.
+                        The more labeled cards you have, the better it learns.
+                    </p>
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <button id="calibrateBtn" onclick="runCalibration()"
+                            style="padding:10px 18px; background:#2f855a; color:#fff; border:none;
+                                   border-radius:8px; cursor:pointer; font-size:0.95em; font-weight:600;">
+                            ⚡ Re-calibrate Now
+                        </button>
+                        <span id="calibrateStatus" style="font-size:0.88em; color:#4a5568;"></span>
+                    </div>
+                    <div id="calibrateResult" style="margin-top:10px; display:none;
+                         background:#f0fff4; border:1px solid #9ae6b4; border-radius:8px; padding:12px;
+                         font-size:0.9em; color:#22543d; line-height:1.7;"></div>
+                    <div id="currentCalibration" style="margin-top:8px; font-size:0.85em; color:#4a5568;"></div>
+                </div>
+            </div>
+        </div>
+        </div> <!-- /tab-training -->
+
+        <footer>
+            <p>© 2024 Card Grading App | <a href="/about" style="color: #667eea;">About Grading System</a></p>
+            <p style="margin-top: 10px; font-size: 0.9em;">
+                Note: This is an AI estimate using a custom 100-1000 point grading scale. Results are for informational purposes only.
+            </p>
+        </footer>
+    </div>
+    
+    <script>
+        let frontImageFile = null;
+        let backImageFile = null;
+        let frontImageUrl = null;
+        let backImageUrl = null;
+        let lotFrontImageFile = null;
+        let lotBackImageFile = null;
+        let lotFrontImageUrl = null;
+        let lotBackImageUrl = null;
+
+        function isLikelyImageUrl(value) {
+            if (!value) return false;
+            const trimmed = value.trim();
+            if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) return false;
+            const lower = trimmed.toLowerCase();
+            if (lower.match(/\.(png|jpe?g|gif|webp)(\?|#|$)/)) return true;
+            if (lower.includes('i.ebayimg.com') || lower.includes('ebayimg.com')) return true;
+            return false;
+        }
+
+        function setImageUrl(imageUrl, previewId) {
+            const preview = document.getElementById(previewId);
+            preview.src = imageUrl;
+            preview.style.display = 'block';
+
+            if (previewId === 'frontPreview') {
+                frontImageFile = null;
+                frontImageUrl = imageUrl;
+            } else {
+                backImageFile = null;
+                backImageUrl = imageUrl;
+            }
+
+            checkReadyToGrade();
+        }
+
+        function setImageFile(file, previewId) {
+            if (!file || !file.type || !file.type.startsWith('image/')) {
+                const error = document.getElementById('error');
+                error.textContent = 'Error: Please drop a valid image file.';
+                error.classList.add('show');
+                return;
+            }
+
+            const preview = document.getElementById(previewId);
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                preview.src = e.target.result;
+                preview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+
+            if (previewId === 'frontPreview') {
+                frontImageFile = file;
+                frontImageUrl = null;
+            } else {
+                backImageFile = file;
+                backImageUrl = null;
+            }
+
+            checkReadyToGrade();
+        }
+        
+        function previewImage(input, previewId) {
+            const file = input.files[0];
+            if (file) {
+                setImageFile(file, previewId);
+            }
+        }
+
+        function setupDragAndDrop() {
+            const frontBox = document.getElementById('frontUploadBox');
+            const backBox = document.getElementById('backUploadBox');
+
+            // Prevent browser from opening dropped images as a new page.
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach((eventName) => {
+                window.addEventListener(eventName, (event) => {
+                    event.preventDefault();
+                });
+            });
+
+            function getFirstDroppedFile(event) {
+                if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+                    return event.dataTransfer.files[0];
+                }
+                if (event.dataTransfer && event.dataTransfer.items && event.dataTransfer.items.length > 0) {
+                    for (const item of event.dataTransfer.items) {
+                        if (item.kind === 'file') {
+                            const file = item.getAsFile();
+                            if (file) return file;
+                        }
+                    }
+                }
+                return null;
+            }
+
+            function getDroppedImageUrl(event) {
+                if (!event.dataTransfer) return null;
+
+                const uriList = event.dataTransfer.getData('text/uri-list');
+                if (isLikelyImageUrl(uriList)) return uriList.trim();
+
+                const plainText = event.dataTransfer.getData('text/plain');
+                if (isLikelyImageUrl(plainText)) return plainText.trim();
+
+                const html = event.dataTransfer.getData('text/html');
+                if (html && html.includes('<img')) {
+                    const srcMatch = html.match(/src=["']([^"']+)["']/i);
+                    if (srcMatch && isLikelyImageUrl(srcMatch[1])) {
+                        return srcMatch[1].trim();
+                    }
+                }
+
+                return null;
+            }
+
+            function bindDrop(boxElement, previewId) {
+                boxElement.addEventListener('click', (event) => {
+                    if (boxElement.dataset.justDropped === '1') {
+                        event.preventDefault();
+                        return;
+                    }
+                    const inputId = boxElement.dataset.inputId;
+                    const input = document.getElementById(inputId);
+                    if (input) {
+                        input.click();
+                    }
+                });
+
+                boxElement.addEventListener('dragover', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    boxElement.classList.add('drag-over');
+                });
+
+                boxElement.addEventListener('dragleave', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    boxElement.classList.remove('drag-over');
+                });
+
+                boxElement.addEventListener('drop', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    boxElement.classList.remove('drag-over');
+
+                    const droppedFile = getFirstDroppedFile(event);
+                    if (droppedFile) {
+                        setImageFile(droppedFile, previewId);
+                        boxElement.dataset.justDropped = '1';
+                        setTimeout(() => {
+                            boxElement.dataset.justDropped = '0';
+                        }, 300);
+                        return;
+                    }
+
+                    const droppedUrl = getDroppedImageUrl(event);
+                    if (droppedUrl) {
+                        setImageUrl(droppedUrl, previewId);
+                        boxElement.dataset.justDropped = '1';
+                        setTimeout(() => {
+                            boxElement.dataset.justDropped = '0';
+                        }, 300);
+                    }
+                });
+            }
+
+            bindDrop(frontBox, 'frontPreview');
+            bindDrop(backBox, 'backPreview');
+
+            // ---- Lot image drop boxes ----
+            const lotFrontBox = document.getElementById('lotFrontBox');
+            const lotBackBox  = document.getElementById('lotBackBox');
+
+            function bindLotDrop(boxElement, inputId, previewId, which) {
+                boxElement.addEventListener('click', (event) => {
+                    if (boxElement.dataset.justDropped === '1') { event.preventDefault(); return; }
+                    document.getElementById(inputId).click();
+                });
+                document.getElementById(inputId).addEventListener('change', (e) => {
+                    const f = e.target.files[0];
+                    if (!f) return;
+                    showLotPreview(f, null, previewId, which);
+                });
+                boxElement.addEventListener('dragover', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    boxElement.classList.add('drag-over');
+                });
+                boxElement.addEventListener('dragleave', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    boxElement.classList.remove('drag-over');
+                });
+                boxElement.addEventListener('drop', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    boxElement.classList.remove('drag-over');
+                    const f = getFirstDroppedFile(e);
+                    if (f) {
+                        showLotPreview(f, null, previewId, which);
+                        boxElement.dataset.justDropped = '1';
+                        setTimeout(() => { boxElement.dataset.justDropped = '0'; }, 300);
+                        return;
+                    }
+                    const url = getDroppedImageUrl(e);
+                    if (url) {
+                        showLotPreview(null, url, previewId, which);
+                        boxElement.dataset.justDropped = '1';
+                        setTimeout(() => { boxElement.dataset.justDropped = '0'; }, 300);
+                    }
+                });
+            }
+
+            function showLotPreview(file, url, previewId, which) {
+                const preview = document.getElementById(previewId);
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => { preview.src = e.target.result; preview.style.display = 'block'; };
+                    reader.readAsDataURL(file);
+                    if (which === 'front') { lotFrontImageFile = file; lotFrontImageUrl = null; }
+                    else                   { lotBackImageFile  = file; lotBackImageUrl  = null; }
+                } else if (url) {
+                    preview.src = url; preview.style.display = 'block';
+                    if (which === 'front') { lotFrontImageFile = null; lotFrontImageUrl = url; }
+                    else                   { lotBackImageFile  = null; lotBackImageUrl  = url; }
+                }
+            }
+
+            if (lotFrontBox) bindLotDrop(lotFrontBox, 'lotFrontImage', 'lotFrontPreview', 'front');
+            if (lotBackBox)  bindLotDrop(lotBackBox,  'lotBackImage',  'lotBackPreview',  'back');
+        }
+        
+        function checkReadyToGrade() {
+            const button = document.getElementById('gradeButton');
+            const saveSampleButton = document.getElementById('saveSampleButton');
+            const hasFront = !!frontImageFile || !!frontImageUrl;
+            const hasBack = !!backImageFile || !!backImageUrl;
+            if (hasFront && hasBack) {
+                button.disabled = false;
+                saveSampleButton.disabled = false;
+            } else {
+                button.disabled = true;
+                saveSampleButton.disabled = true;
+            }
+        }
+
+        function updateBulkSummary() {
+            const bulkFront = document.getElementById('bulkFrontImages').files;
+            const bulkBack = document.getElementById('bulkBackImages').files;
+            const bulkSaveButton = document.getElementById('bulkSaveButton');
+            const bulkSummary = document.getElementById('bulkSummary');
+
+            const frontCount = bulkFront ? bulkFront.length : 0;
+            const backCount = bulkBack ? bulkBack.length : 0;
+
+            if (frontCount === 0 && backCount === 0) {
+                bulkSummary.textContent = 'Bulk: waiting for files...';
+                bulkSaveButton.disabled = true;
+                return;
+            }
+
+            if (frontCount !== backCount) {
+                bulkSummary.textContent = `Bulk: front=${frontCount}, back=${backCount} (counts must match)`;
+                bulkSaveButton.disabled = true;
+                return;
+            }
+
+            bulkSummary.textContent = `Bulk: ${frontCount} front/back pairs ready`;
+            bulkSaveButton.disabled = frontCount === 0;
+        }
+        
+        async function gradeCard() {
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            const error = document.getElementById('error');
+            const success = document.getElementById('success');
+            const button = document.getElementById('gradeButton');
+            
+            // Hide previous results and errors
+            results.classList.remove('show');
+            error.classList.remove('show');
+            success.classList.remove('show');
+            loading.classList.add('show');
+            button.disabled = true;
+            
+            try {
+                const formData = new FormData();
+                if (frontImageFile) {
+                    formData.append('front_image', frontImageFile);
+                } else if (frontImageUrl) {
+                    formData.append('front_image_url', frontImageUrl);
+                }
+
+                if (backImageFile) {
+                    formData.append('back_image', backImageFile);
+                } else if (backImageUrl) {
+                    formData.append('back_image_url', backImageUrl);
+                }
+                
+                const endpoint = isSlabMode() ? '/grade-slab' : '/grade';
+                if (isSlabMode()) {
+                  formData.append('save_as_sample', shouldAutoSaveSlab() ? 'true' : 'false');
+                }
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Display results
+                displayResults(data);
+                
+            } catch (err) {
+                error.textContent = 'Error: ' + err.message;
+                error.classList.add('show');
+            } finally {
+                loading.classList.remove('show');
+                button.disabled = false;
+            }
+        }
+
+        async function runCalibration() {
+            const btn    = document.getElementById('calibrateBtn');
+            const status = document.getElementById('calibrateStatus');
+            const result = document.getElementById('calibrateResult');
+
+            btn.disabled = true;
+            status.textContent = 'Running\u2026 this may take a minute while each card is re-analysed.';
+            result.style.display = 'none';
+
+            try {
+                const resp = await fetch('/calibrate', { method: 'POST' });
+                const data = await resp.json();
+
+                if (!data.success) {
+                    status.style.color = '#c53030';
+                    status.textContent = 'Error: ' + (data.error || 'Calibration failed');
+                    return;
+                }
+
+                status.style.color = '#276749';
+                status.textContent = '\u2713 Calibration complete. Future grades now use updated weights.';
+
+                const improvement = (data.mae_before - data.mae_after).toFixed(1);
+                const improved = improvement > 0;
+
+                const wt = data.category_weights;
+                result.innerHTML = `
+                    <strong>Calibration Results</strong><br>
+                    &bull; Trained on <strong>${data.training_samples}</strong> PSA-labeled cards
+                        (${data.skipped_samples} skipped)<br>
+                    &bull; Average error <strong>before</strong>: ${data.mae_before} pts &nbsp;→&nbsp;
+                        <strong>after</strong>: ${data.mae_after} pts
+                        ${improved ? '<span style="color:#276749">(&#8595; ' + improvement + ' pts better)</span>' : ''}<br>
+                    &bull; Grade accuracy <strong>before</strong>: ${data.grade_accuracy_before}% &nbsp;→&nbsp;
+                        <strong>after</strong>: ${data.grade_accuracy_after}%<br>
+                    <br>
+                    <strong>Learned weights:</strong><br>
+                    &bull; Corners: ${(wt.corners * 100).toFixed(1)}%
+                    &nbsp; Edges: ${(wt.edges * 100).toFixed(1)}%
+                    &nbsp; Surface: ${(wt.surface * 100).toFixed(1)}%
+                    &nbsp; Centering: ${(wt.centering * 100).toFixed(1)}%<br>
+                    &bull; Score bias: ${data.score_bias > 0 ? '+' : ''}${data.score_bias.toFixed(1)} pts
+                `;
+                result.style.display = 'block';
+                loadCalibrationStatus();
+            } catch (err) {
+                status.style.color = '#c53030';
+                status.textContent = 'Error: ' + err.message;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function loadCalibrationStatus() {
+            const el = document.getElementById('currentCalibration');
+            if (!el) return;
+            try {
+                const resp = await fetch('/calibration-status');
+                const data = await resp.json();
+                if (!data.calibrated) {
+                    el.textContent = 'No calibration yet \u2014 using default equal weights (25% each).';
+                    return;
+                }
+                const wt = data.category_weights || {};
+                const date = data.calibrated_at
+                    ? new Date(data.calibrated_at).toLocaleString() : '?';
+                el.innerHTML = `<em>Last calibrated ${date} using ${data.training_samples} samples &mdash;
+                    Corners ${(wt.corners*100).toFixed(0)}%,
+                    Edges ${(wt.edges*100).toFixed(0)}%,
+                    Surface ${(wt.surface*100).toFixed(0)}%,
+                    Centering ${(wt.centering*100).toFixed(0)}%,
+                    bias ${data.score_bias > 0 ? '+' : ''}${(data.score_bias||0).toFixed(1)}</em>`;
+            } catch {}
+        }
+
+        async function autoDetectGrade() {
+            const msgEl = document.getElementById('autoDetectMsg');
+            const btn   = document.getElementById('autoDetectGradeBtn');
+            const sel   = document.getElementById('psaGradeLabel');
+
+            if (!frontImageFile && !frontImageUrl) {
+                msgEl.style.color = '#c53030';
+                msgEl.textContent = 'Upload or drop the front slab image first.';
+                return;
+            }
+
+            btn.disabled = true;
+            msgEl.style.color = '#2b6cb0';
+            msgEl.textContent = 'Scanning slab label\u2026';
+
+            try {
+                const formData = new FormData();
+                if (frontImageFile) {
+                    formData.append('slab_image', frontImageFile);
+                } else {
+                    formData.append('slab_image_url', frontImageUrl);
+                }
+
+                const response = await fetch('/detect-grade', { method: 'POST', body: formData });
+                const data = await response.json();
+
+                if (data.success && data.grade != null) {
+                    // Select the closest option in the dropdown
+                    const target = String(data.grade);
+                    let matched = false;
+                    for (const opt of sel.options) {
+                        if (opt.value === target) {
+                            sel.value = target;
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (matched) {
+                        msgEl.style.color = '#276749';
+                        msgEl.textContent = `\u2713 Auto-detected PSA ${data.grade}. ${data.message}`;
+                    } else {
+                        msgEl.style.color = '#744210';
+                        msgEl.textContent = `Detected grade ${data.grade} but it\u2019s not in the list \u2014 please select manually.`;
+                    }
+                    checkReadyToGrade();
+                } else {
+                    msgEl.style.color = '#c53030';
+                    msgEl.textContent = data.message || 'Could not detect grade \u2014 please select manually.';
+                }
+            } catch (err) {
+                msgEl.style.color = '#c53030';
+                msgEl.textContent = 'Detection error: ' + err.message;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function saveLabeledSample() {
+            const gradeValue = document.getElementById('psaGradeLabel').value;
+            const cardTitle = document.getElementById('cardTitle').value;
+            const cardNotes = document.getElementById('cardNotes').value;
+            const error = document.getElementById('error');
+            const success = document.getElementById('success');
+            const saveSampleButton = document.getElementById('saveSampleButton');
+
+            error.classList.remove('show');
+            success.classList.remove('show');
+
+            if ((!frontImageFile && !frontImageUrl) || (!backImageFile && !backImageUrl)) {
+                error.textContent = 'Error: Upload or drop both front and back images first.';
+                error.classList.add('show');
+                return;
+            }
+
+            if (!gradeValue) {
+                error.textContent = 'Error: Select the known PSA grade before saving.';
+                error.classList.add('show');
+                return;
+            }
+
+            saveSampleButton.disabled = true;
+            try {
+                const formData = new FormData();
+                if (frontImageFile) {
+                    formData.append('front_image', frontImageFile);
+                } else if (frontImageUrl) {
+                    formData.append('front_image_url', frontImageUrl);
+                }
+
+                if (backImageFile) {
+                    formData.append('back_image', backImageFile);
+                } else if (backImageUrl) {
+                    formData.append('back_image_url', backImageUrl);
+                }
+                formData.append('psa_grade', gradeValue);
+                formData.append('card_title', cardTitle);
+                formData.append('notes', cardNotes);
+
+                const response = await fetch('/label-sample', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                success.textContent = `Saved sample ${data.sample_id} (PSA ${gradeValue}).`;
+                success.classList.add('show');
+
+                updateDatasetStats(data.dataset);
+            } catch (err) {
+                error.textContent = 'Error: ' + err.message;
+                error.classList.add('show');
+            } finally {
+                checkReadyToGrade();
+            }
+        }
+
+        async function saveBulkLabeledSamples() {
+            const bulkFrontInput = document.getElementById('bulkFrontImages');
+            const bulkBackInput = document.getElementById('bulkBackImages');
+            const bulkGrade = document.getElementById('bulkPsaGrade').value;
+            const bulkTitlePrefix = document.getElementById('bulkTitlePrefix').value;
+            const bulkNotes = document.getElementById('bulkNotes').value;
+            const bulkSaveButton = document.getElementById('bulkSaveButton');
+            const bulkSummary = document.getElementById('bulkSummary');
+            const error = document.getElementById('error');
+            const success = document.getElementById('success');
+
+            const frontFiles = bulkFrontInput.files;
+            const backFiles = bulkBackInput.files;
+
+            error.classList.remove('show');
+            success.classList.remove('show');
+
+            if (!frontFiles || !backFiles || frontFiles.length === 0 || backFiles.length === 0) {
+                error.textContent = 'Error: Upload front and back batches first.';
+                error.classList.add('show');
+                return;
+            }
+            if (frontFiles.length !== backFiles.length) {
+                error.textContent = 'Error: Front and back image counts must match.';
+                error.classList.add('show');
+                return;
+            }
+            if (!bulkGrade) {
+                error.textContent = 'Error: Select a PSA grade for the bulk batch.';
+                error.classList.add('show');
+                return;
+            }
+
+            bulkSaveButton.disabled = true;
+            bulkSummary.textContent = `Bulk: uploading ${frontFiles.length} pairs...`;
+
+            try {
+                const formData = new FormData();
+
+                for (const file of frontFiles) {
+                    formData.append('front_images', file);
+                }
+                for (const file of backFiles) {
+                    formData.append('back_images', file);
+                }
+
+                formData.append('psa_grade', bulkGrade);
+                formData.append('card_title_prefix', bulkTitlePrefix);
+                formData.append('notes', bulkNotes);
+
+                const response = await fetch('/bulk-label-samples', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                success.textContent = `Saved ${data.saved_pairs} bulk samples (PSA ${bulkGrade}).`;
+                success.classList.add('show');
+
+                updateDatasetStats(data.dataset);
+                bulkSummary.textContent = `Bulk: saved ${data.saved_pairs} pairs`;
+            } catch (err) {
+                error.textContent = 'Error: ' + err.message;
+                error.classList.add('show');
+                bulkSummary.textContent = 'Bulk: upload failed';
+            } finally {
+                updateBulkSummary();
+            }
+        }
+
+        async function saveBulkFromCsv() {
+            const csvInput = document.getElementById('bulkCsvFile');
+            const defaultGrade = document.getElementById('bulkCsvDefaultGrade').value;
+            const bulkCsvSaveButton = document.getElementById('bulkCsvSaveButton');
+            const bulkCsvSummary = document.getElementById('bulkCsvSummary');
+            const error = document.getElementById('error');
+            const success = document.getElementById('success');
+
+            error.classList.remove('show');
+            success.classList.remove('show');
+
+            if (!csvInput.files || csvInput.files.length === 0) {
+                error.textContent = 'Error: Select a CSV file first.';
+                error.classList.add('show');
+                return;
+            }
+
+            const csvFile = csvInput.files[0];
+            bulkCsvSaveButton.disabled = true;
+            bulkCsvSummary.textContent = 'CSV import: uploading...';
+
+            try {
+                const formData = new FormData();
+                formData.append('csv_file', csvFile);
+                if (defaultGrade) {
+                    formData.append('default_psa_grade', defaultGrade);
+                }
+
+                const response = await fetch('/bulk-label-from-csv', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                const skippedCount = (data.skipped || []).length;
+                success.textContent = `Imported ${data.saved_pairs} CSV pairs${skippedCount ? ` (${skippedCount} skipped)` : ''}.`;
+                success.classList.add('show');
+
+                updateDatasetStats(data.dataset);
+                bulkCsvSummary.textContent = `CSV import: saved ${data.saved_pairs}${skippedCount ? `, skipped ${skippedCount}` : ''}`;
+            } catch (err) {
+                error.textContent = 'Error: ' + err.message;
+                error.classList.add('show');
+                bulkCsvSummary.textContent = 'CSV import: failed';
+            } finally {
+                bulkCsvSaveButton.disabled = false;
+            }
+        }
+
+        async function saveLotLabeledSamples() {
+            const lotGrade = document.getElementById('lotPsaGrade').value;
+            const lotTitlePrefix = document.getElementById('lotTitlePrefix').value;
+            const lotRows = document.getElementById('lotRows').value;
+            const lotCols = document.getElementById('lotCols').value;
+            const lotNotes = document.getElementById('lotNotes').value;
+            const lotImportButton = document.getElementById('lotImportButton');
+            const lotSummary = document.getElementById('lotSummary');
+            const error = document.getElementById('error');
+            const success = document.getElementById('success');
+
+            error.classList.remove('show');
+            success.classList.remove('show');
+
+            const hasFront = lotFrontImageFile || lotFrontImageUrl;
+            const hasBack  = lotBackImageFile  || lotBackImageUrl;
+
+            if (!hasFront) {
+                error.textContent = 'Error: Add a front lot image (click or drag & drop).';
+                error.classList.add('show');
+                return;
+            }
+            if (!hasBack) {
+                error.textContent = 'Error: Add a back lot image (click or drag & drop).';
+                error.classList.add('show');
+                return;
+            }
+            if (!lotGrade) {
+                error.textContent = 'Error: Select PSA grade for lot import.';
+                error.classList.add('show');
+                return;
+            }
+
+            if ((lotRows && !lotCols) || (!lotRows && lotCols)) {
+                error.textContent = 'Error: Provide both rows and cols, or leave both empty.';
+                error.classList.add('show');
+                return;
+            }
+
+            lotImportButton.disabled = true;
+            lotSummary.textContent = 'Lot import: processing...';
+
+            try {
+                const formData = new FormData();
+                if (lotFrontImageFile) formData.append('front_lot_image', lotFrontImageFile);
+                else formData.append('front_lot_image_url', lotFrontImageUrl);
+                if (lotBackImageFile)  formData.append('back_lot_image',  lotBackImageFile);
+                else formData.append('back_lot_image_url',  lotBackImageUrl);
+                formData.append('psa_grade', lotGrade);
+                formData.append('card_title_prefix', lotTitlePrefix);
+                formData.append('notes', lotNotes);
+                if (lotRows) formData.append('rows', lotRows);
+                if (lotCols) formData.append('cols', lotCols);
+
+                const response = await fetch('/bulk-label-from-lot-image', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                success.textContent = `Lot import saved ${data.saved_pairs} pairs (front detected: ${data.detected_front_cards}, back detected: ${data.detected_back_cards}).`;
+                success.classList.add('show');
+
+                updateDatasetStats(data.dataset);
+                lotSummary.textContent = `Lot import: saved ${data.saved_pairs} pairs`;
+            } catch (err) {
+                error.textContent = 'Error: ' + err.message;
+                error.classList.add('show');
+                lotSummary.textContent = 'Lot import: failed';
+            } finally {
+                lotImportButton.disabled = false;
+            }
+        }
+
+        async function runEbayBulkTrain() {
+            const query = document.getElementById('ebayTrainQuery').value.trim();
+            if (!query) { document.getElementById('ebayTrainStatus').textContent = 'Please enter a search query first.'; return; }
+            const grades = Array.from(document.querySelectorAll('.ebay-grade-cb:checked')).map(cb => parseFloat(cb.value));
+            if (!grades.length) { document.getElementById('ebayTrainStatus').textContent = 'Select at least one grade.'; return; }
+            const maxPerGrade = parseInt(document.getElementById('ebayMaxPerGrade').value) || 50;
+            const btn = document.getElementById('ebayTrainButton');
+            const status = document.getElementById('ebayTrainStatus');
+            const resultDiv = document.getElementById('ebayTrainResult');
+
+            btn.disabled = true;
+            resultDiv.style.display = 'none';
+            status.textContent = 'Starting eBay fetch...';
+
+            let jobId = null;
+            try {
+                const resp = await fetch('/bulk-train-from-ebay', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({search_query: query, grades, max_per_grade: maxPerGrade})
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    status.textContent = 'Error: ' + (data.error || 'Unknown error');
+                    resultDiv.innerHTML = `<strong>Error:</strong> ${data.error}`;
+                    resultDiv.style.display = 'block';
+                    btn.disabled = false;
+                    return;
+                }
+                jobId = data.job_id;
+            } catch (err) {
+                status.textContent = 'Error: ' + err.message;
+                btn.disabled = false;
+                return;
+            }
+
+            // Poll for progress
+            const poll = setInterval(async () => {
+                try {
+                    const r = await fetch(`/bulk-train-status/${jobId}`);
+                    const job = await r.json();
+
+                    if (job.status === 'error') {
+                        clearInterval(poll);
+                        status.textContent = 'Error: ' + job.error;
+                        btn.disabled = false;
+                        return;
+                    }
+
+                    if (job.status === 'downloading') {
+                        const pct = job.total > 0 ? Math.round((job.current / job.total) * 100) : 0;
+                        status.textContent = `Downloading ${job.current} of ${job.total} images... (${job.saved} saved, ${job.skipped} skipped)`;
+                    } else if (job.status === 'training') {
+                        status.textContent = `Retraining ML model on ${job.saved} new samples...`;
+                    } else if (job.status === 'starting') {
+                        status.textContent = 'Fetching listings from eBay...';
+                    }
+
+                    if (job.done) {
+                        clearInterval(poll);
+                        status.textContent = `Done! Saved ${job.saved}, skipped ${job.skipped}.`;
+                        let html = `<strong>Saved ${job.saved} new training samples</strong> (${job.skipped} skipped).<br>`;
+                        if (job.retrain) {
+                            if (job.retrain.retrained) {
+                                html += `Model retrained on ${job.retrain.n_samples} total samples — grade accuracy: ${job.retrain.grade_accuracy}%<br>`;
+                            } else {
+                                html += `Retrain skipped: ${job.retrain.error || 'not enough samples'}<br>`;
+                            }
+                        }
+                        if (job.api_errors && job.api_errors.length) {
+                            html += `<br><strong>API errors:</strong> ${job.api_errors.join(', ')}<br>`;
+                        }
+                        if (job.saved_items && job.saved_items.length) {
+                            html += '<br><strong>Saved:</strong><ul style="margin:4px 0 0 16px;">';
+                            job.saved_items.slice(0, 10).forEach(i => {
+                                html += `<li>PSA ${i.grade} — ${i.title.substring(0, 70)}</li>`;
+                            });
+                            if (job.saved > 10) html += `<li>...and ${job.saved - 10} more</li>`;
+                            html += '</ul>';
+                        }
+                        resultDiv.innerHTML = html;
+                        resultDiv.style.display = 'block';
+                        if (job.dataset) updateDatasetStats(job.dataset);
+                        loadMlStatus();
+                        btn.disabled = false;
+                    }
+                } catch (e) { /* ignore transient poll errors */ }
+            }, 2000);
+        }
+
+        // ----------------------------------------------------------------
+        // Firecrawl + Auction House Bulk Train
+        // ----------------------------------------------------------------
+        async function loadFirecrawlStatus() {
+            try {
+                const r = await fetch('/firecrawl-status');
+                const data = await r.json();
+                const el = document.getElementById('firecrawlStatus');
+                if (data.available) {
+                    el.style.background = '#f0fff4';
+                    el.style.borderColor = '#9ae6b4';
+                    el.style.color = '#22543d';
+                    el.innerHTML = '✅ <strong>Firecrawl connected.</strong> Ready to scrape Fanatics Collect, Goldin, and Heritage.';
+                } else {
+                    el.style.background = '#fffbeb';
+                    el.style.borderColor = '#f6ad55';
+                    el.style.color = '#7b341e';
+                    el.innerHTML = '⚠️ <strong>Firecrawl API key not set.</strong> '
+                        + 'Add <code>FIRECRAWL_API_KEY=fc-...</code> to your <code>.env</code> file and restart.';
+                }
+            } catch(e) {}
+        }
+
+        async function runAuctionBulkTrain() {
+            const query = document.getElementById('auctionTrainQuery').value.trim();
+            if (!query) { document.getElementById('auctionTrainStatus').textContent = 'Please enter a search query first.'; return; }
+            const grades = Array.from(document.querySelectorAll('.auction-grade-cb:checked')).map(cb => parseFloat(cb.value));
+            if (!grades.length) { document.getElementById('auctionTrainStatus').textContent = 'Select at least one grade.'; return; }
+            const sources = Array.from(document.querySelectorAll('.auction-source-cb:checked')).map(cb => cb.value);
+            if (!sources.length) { document.getElementById('auctionTrainStatus').textContent = 'Select at least one source (PWCC or Goldin).'; return; }
+            const maxPerGrade = parseInt(document.getElementById('auctionMaxPerGrade').value) || 30;
+
+            const btn = document.getElementById('auctionTrainButton');
+            const status = document.getElementById('auctionTrainStatus');
+            const resultDiv = document.getElementById('auctionTrainResult');
+
+            btn.disabled = true;
+            resultDiv.style.display = 'none';
+            status.textContent = 'Starting auction fetch...';
+
+            let jobId = null;
+            try {
+                const resp = await fetch('/bulk-train-from-auction', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({search_query: query, grades, max_per_grade: maxPerGrade, sources})
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    status.textContent = 'Error: ' + (data.error || 'Unknown error');
+                    resultDiv.innerHTML = `<strong>Error:</strong> ${data.error}`;
+                    resultDiv.style.display = 'block';
+                    btn.disabled = false;
+                    return;
+                }
+                jobId = data.job_id;
+            } catch (err) {
+                status.textContent = 'Error: ' + err.message;
+                btn.disabled = false;
+                return;
+            }
+
+            const poll = setInterval(async () => {
+                try {
+                    const r = await fetch(`/bulk-train-auction-status/${jobId}`);
+                    const job = await r.json();
+
+                    if (job.status === 'error') {
+                        clearInterval(poll);
+                        status.textContent = 'Error: ' + job.error;
+                        btn.disabled = false;
+                        return;
+                    }
+                    if (job.status === 'downloading') {
+                        status.textContent = `Downloading ${job.current} of ${job.total} images... (${job.saved} saved, ${job.skipped} skipped)`;
+                    } else if (job.status === 'training') {
+                        status.textContent = `Retraining ML model on ${job.saved} new samples...`;
+                    } else if (job.status === 'starting') {
+                        status.textContent = 'Fetching listings from auction houses...';
+                    }
+
+                    if (job.done) {
+                        clearInterval(poll);
+                        status.textContent = `Done! Saved ${job.saved}, skipped ${job.skipped}.`;
+                        let html = `<strong>Saved ${job.saved} new training samples</strong> (${job.skipped} skipped).<br>`;
+                        if (job.retrain) {
+                            if (job.retrain.retrained) {
+                                html += `Model retrained on ${job.retrain.n_samples} total samples — grade accuracy: ${job.retrain.grade_accuracy}%<br>`;
+                            } else {
+                                html += `Retrain skipped: ${job.retrain.error || 'not enough samples'}<br>`;
+                            }
+                        }
+                        if (job.api_errors && job.api_errors.length) {
+                            html += `<br><strong>Note:</strong> ${job.api_errors.join(' | ')}<br>`;
+                            html += `<em style="color:#666;">Tip: PWCC/Goldin may require manual image upload if their API is blocked. eBay bulk import will still work.</em><br>`;
+                        }
+                        resultDiv.innerHTML = html;
+                        resultDiv.style.display = 'block';
+                        loadMlStatus();
+                        btn.disabled = false;
+                    }
+                } catch (e) { /* ignore transient errors */ }
+            }, 2000);
+        }
+
+        // ----------------------------------------------------------------
+        // Vision Model (EfficientNet-B0) Training
+        // ----------------------------------------------------------------
+        async function loadVisionModelStatus() {
+            try {
+                const r = await fetch('/vision-model-status');
+                const data = await r.json();
+                if (!data.success) return;
+                const m = data.model;
+                const el = document.getElementById('visionModelStatus');
+                if (m.is_trained) {
+                    el.innerHTML = `<strong style="color:#6b46c1;">Vision AI: Active</strong> — ${m.n_pairs} image pairs • ${m.grade_accuracy_pct}% grade accuracy • device: ${m.device || 'cpu'} • trained ${m.trained_at ? new Date(m.trained_at + 'Z').toLocaleDateString() : '—'}`;
+                } else if (!m.torch_available) {
+                    el.innerHTML = `<strong style="color:#c05621;">Vision AI: PyTorch not installed.</strong> Run: <code>pip install torch torchvision pillow</code>`;
+                } else {
+                    el.innerHTML = `<strong style="color:#805ad5;">Vision AI: Not trained yet.</strong> You need at least 20 labeled images to start training.`;
+                }
+            } catch(e) {}
+        }
+
+        async function runVisionTraining() {
+            const epochs = parseInt(document.getElementById('visionEpochs').value) || 15;
+            const btn = document.getElementById('visionTrainBtn');
+            const statusEl = document.getElementById('visionTrainStatus');
+            const progressBar = document.getElementById('visionProgressBar');
+            const progressFill = document.getElementById('visionProgressFill');
+            const progressLabel = document.getElementById('visionProgressLabel');
+            const resultDiv = document.getElementById('visionTrainResult');
+
+            btn.disabled = true;
+            resultDiv.style.display = 'none';
+            progressBar.style.display = 'block';
+            progressFill.style.width = '0%';
+            statusEl.textContent = 'Starting...';
+
+            let jobId = null;
+            try {
+                const resp = await fetch('/train-vision-model', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({epochs})
+                });
+                const data = await resp.json();
+                if (!data.success) {
+                    statusEl.textContent = 'Error: ' + (data.error || 'Unknown');
+                    progressBar.style.display = 'none';
+                    btn.disabled = false;
+                    return;
+                }
+                jobId = data.job_id;
+            } catch (err) {
+                statusEl.textContent = 'Error: ' + err.message;
+                progressBar.style.display = 'none';
+                btn.disabled = false;
+                return;
+            }
+
+            const poll = setInterval(async () => {
+                try {
+                    const r = await fetch(`/vision-train-status/${jobId}`);
+                    const job = await r.json();
+
+                    if (job.status === 'error') {
+                        clearInterval(poll);
+                        statusEl.textContent = 'Error: ' + job.error;
+                        progressBar.style.display = 'none';
+                        btn.disabled = false;
+                        return;
+                    }
+                    if (job.status === 'loading_images') {
+                        statusEl.textContent = 'Loading training images...';
+                        progressFill.style.width = '5%';
+                    } else if (job.status === 'training') {
+                        const pct = job.total_epochs > 0 ? Math.round((job.epoch / job.total_epochs) * 95) + 5 : 5;
+                        progressFill.style.width = pct + '%';
+                        progressLabel.textContent = `Epoch ${job.epoch} / ${job.total_epochs}  —  loss: ${job.last_loss || '…'}`;
+                        statusEl.textContent = `Training on ${job.total_pairs} image pairs (device: GPU/MPS)...`;
+                    }
+
+                    if (job.done) {
+                        clearInterval(poll);
+                        progressFill.style.width = '100%';
+                        statusEl.textContent = `Done! ${job.grade_accuracy}% accuracy on ${job.n_pairs} card pairs.`;
+                        resultDiv.innerHTML = `
+                            <strong>Vision model trained successfully!</strong><br>
+                            Image pairs: ${job.n_pairs}  |  Total images: ${job.n_samples}<br>
+                            Grade accuracy: <strong>${job.grade_accuracy}%</strong>  |  MAE: ${job.train_mae}<br>
+                            Device: ${job.device || 'cpu'}
+                        `;
+                        resultDiv.style.display = 'block';
+                        loadVisionModelStatus();
+                        btn.disabled = false;
+                    }
+                } catch (e) { /* ignore */ }
+            }, 2000);
+        }
+
+        function updateDatasetStats(dataset) {
+            const stats = document.getElementById('datasetStats');
+            if (!dataset) {
+                stats.textContent = 'Dataset: unavailable';
+                return;
+            }
+
+            const byGrade = dataset.by_grade || {};
+            const gradeSummary = Object.keys(byGrade)
+                .sort((a, b) => parseFloat(a) - parseFloat(b))
+                .map(grade => `PSA ${grade}: ${byGrade[grade]}`)
+                .join(' | ');
+
+            stats.textContent = `Dataset samples: ${dataset.total_samples}${gradeSummary ? ' | ' + gradeSummary : ''}`;
+        }
+
+        async function loadDatasetStats() {
+            try {
+                const response = await fetch('/dataset-stats');
+                const data = await response.json();
+                if (data.success && data.dataset) {
+                    updateDatasetStats(data.dataset);
+                } else {
+                    updateDatasetStats(null);
+                }
+            } catch (error) {
+                updateDatasetStats(null);
+            }
+        }
+        
+        function displayResults(data) {
+            const results = document.getElementById('results');
+            const gradeNumber = document.getElementById('gradeNumber');
+            const gradeDescription = document.getElementById('gradeDescription');
+            const categoryScores = document.getElementById('categoryScores');
+            const detailsText = document.getElementById('detailsText');
+            const centeringDebug = document.getElementById('centeringDebug');
+            const centeringDebugGrid = document.getElementById('centeringDebugGrid');
+            const centeringWarning = document.getElementById('centeringWarning');
+            
+            // Display grade - show both numeric grade and name
+            gradeNumber.textContent = `${data.grade} - ${data.grade_name}`;
+            gradeDescription.textContent = `Score: ${data.score}/1000 | ${data.description}`;
+            
+            // Display category scores
+            categoryScores.innerHTML = '';
+            for (const [category, score] of Object.entries(data.category_scores)) {
+                const categoryName = category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                const scoreItem = document.createElement('div');
+                scoreItem.className = 'score-item';
+                scoreItem.innerHTML = `
+                    <h4>${categoryName}</h4>
+                    <div class="score-value">${score}/1000</div>
+                `;
+                categoryScores.appendChild(scoreItem);
+            }
+            
+            // Display detailed analysis
+            detailsText.textContent = data.details;
+
+            // Display centering debug
+            if (data.debug && data.debug.front_centering_ratios && data.debug.back_centering_ratios) {
+                const front = data.debug.front_centering_ratios;
+                const back = data.debug.back_centering_ratios;
+                const scores = data.debug.centering_scores || {};
+                    const frontCorners = data.debug.front_corners || {};
+                    const backCorners = data.debug.back_corners || {};
+                    const cornerScores = data.debug.corner_scores || {};
+                    const frontSurface = data.debug.front_surface || {};
+                    const backSurface = data.debug.back_surface || {};
+                    const surfaceScores = data.debug.surface_scores || {};
+
+                centeringDebugGrid.innerHTML = `
+                    <div class="debug-item">
+                        <strong>Front Ratios</strong><br>
+                        Left/Right: ${front.left_right_ratio}%<br>
+                        Top/Bottom: ${front.top_bottom_ratio}%<br>
+                        Method: ${front.method || 'unknown'}<br>
+                        Reliable: ${front.reliable ? 'Yes' : 'No'}
+                    </div>
+                    <div class="debug-item">
+                        <strong>Back Ratios</strong><br>
+                        Left/Right: ${back.left_right_ratio}%<br>
+                        Top/Bottom: ${back.top_bottom_ratio}%<br>
+                        Method: ${back.method || 'unknown'}<br>
+                        Reliable: ${back.reliable ? 'Yes' : 'No'}
+                    </div>
+                    <div class="debug-item">
+                        <strong>Centering Scores</strong><br>
+                        Front: ${scores.front ?? '-'} / 1000<br>
+                        Back: ${scores.back ?? '-'} / 1000<br>
+                        Combined: ${scores.combined ?? '-'} / 1000
+                    </div>
+                    <div class="debug-item">
+                        <strong>Corner Metrics (Front)</strong><br>
+                        Sharpness: ${frontCorners.sharpness ?? '-'}<br>
+                        Worn Corners: ${frontCorners.worn_corners ?? '-'}<br>
+                        Rounding: ${frontCorners.rounding_level ?? '-'}<br>
+                        Fraying: ${frontCorners.fraying ?? '-'}
+                    </div>
+                    <div class="debug-item">
+                        <strong>Corner Metrics (Back)</strong><br>
+                        Sharpness: ${backCorners.sharpness ?? '-'}<br>
+                        Worn Corners: ${backCorners.worn_corners ?? '-'}<br>
+                        Rounding: ${backCorners.rounding_level ?? '-'}<br>
+                        Fraying: ${backCorners.fraying ?? '-'}
+                    </div>
+                    <div class="debug-item">
+                        <strong>Corner Scores</strong><br>
+                        Front: ${cornerScores.front ?? '-'} / 1000<br>
+                        Back: ${cornerScores.back ?? '-'} / 1000<br>
+                        Combined: ${cornerScores.combined ?? '-'} / 1000
+                    </div>
+                    <div class="debug-item">
+                        <strong>Surface Metrics (Front)</strong><br>
+                        Scratches: ${frontSurface.scratch_count ?? '-'} | Creases: ${frontSurface.crease_count ?? '-'}<br>
+                        Wrinkles: ${frontSurface.wrinkle_count ?? '-'} (${frontSurface.wrinkle_length ?? '-'} len)<br>
+                        Stains: ${frontSurface.stain_count ?? '-'} | Defects: ${frontSurface.print_defects ?? '-'}<br>
+                        Dent: ${frontSurface.dent_count ?? '-'} | Scuffing: ${frontSurface.scuffing ?? '-'}
+                    </div>
+                    <div class="debug-item">
+                        <strong>Surface Metrics (Back)</strong><br>
+                        Scratches: ${backSurface.scratch_count ?? '-'} | Creases: ${backSurface.crease_count ?? '-'}<br>
+                        Wrinkles: ${backSurface.wrinkle_count ?? '-'} (${backSurface.wrinkle_length ?? '-'} len)<br>
+                        Stains: ${backSurface.stain_count ?? '-'} | Defects: ${backSurface.print_defects ?? '-'}<br>
+                        Dent: ${backSurface.dent_count ?? '-'} | Scuffing: ${backSurface.scuffing ?? '-'}
+                    </div>
+                    <div class="debug-item">
+                        <strong>Surface Scores</strong><br>
+                        Front: ${surfaceScores.front ?? '-'} / 1000<br>
+                        Back: ${surfaceScores.back ?? '-'} / 1000<br>
+                        Combined: ${surfaceScores.combined ?? '-'} / 1000
+                    </div>
+                `;
+
+                const showWarning = !!data.debug.framing_warning;
+                if (showWarning) {
+                    const frontNote = front.note ? `Front: ${front.note}` : '';
+                    const backNote = back.note ? `Back: ${back.note}` : '';
+                    centeringWarning.textContent = `Likely photo framing issue detected. ${frontNote} ${backNote}`.trim();
+                    centeringWarning.style.display = 'block';
+                } else {
+                    centeringWarning.style.display = 'none';
+                    centeringWarning.textContent = '';
+                }
+
+                centeringDebug.style.display = 'block';
+            } else {
+                centeringDebug.style.display = 'none';
+                centeringDebugGrid.innerHTML = '';
+                centeringWarning.style.display = 'none';
+                centeringWarning.textContent = '';
+            }
+            
+            // Show results
+            results.classList.add('show');
+
+            // Store grade for comps, show card ID and ML info
+            window._lastGrade = data.grade;
+            displayCardId(data.card_id);
+            showMlGradeInfo(data.ml);
+
+            // Show slab detection info if present
+            if (data.slab_info) {
+              const slabInfo = data.slab_info;
+              const mlGradeInfo = document.getElementById('ml-grade-info');
+              if (mlGradeInfo) {
+                let slabText = '';
+                if (slabInfo.detected_psa_grade !== null && slabInfo.detected_psa_grade !== undefined) {
+                  slabText = `PSA label detected: Grade ${slabInfo.detected_psa_grade}`;
+                } else {
+                  slabText = `Slab mode: card extracted (label OCR: ${slabInfo.ocr_message || 'not detected'})`;
+                }
+                if (data.auto_saved) slabText += ' \u2022 Saved as training sample';
+                mlGradeInfo.textContent = slabText;
+                mlGradeInfo.style.display = 'block';
+              }
+            }
+
+            // Scroll to results
+            results.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        loadDatasetStats();
+        loadCalibrationStatus();
+        updateBulkSummary();
+        setupDragAndDrop();
+
+        // ---- ML Status ----
+        function loadMlStatus() {
+          fetch('/model-status')
+            .then(r => r.json())
+            .then(data => {
+              const bar = document.getElementById('ml-status-bar');
+              const dot = document.getElementById('ml-dot');
+              const txt = document.getElementById('ml-status-text');
+              if (!bar) return;
+              bar.style.display = 'flex';
+              if (!data.sklearn_available) {
+                dot.style.background = '#dc3545';
+                txt.textContent = 'AI Model: scikit-learn not installed (pip install scikit-learn)';
+              } else if (!data.is_trained) {
+                dot.style.background = '#ffc107';
+                txt.textContent = `AI Model: Rule-based only — label ${10 - (data.n_samples||0)} more cards to activate ML`;
+              } else {
+                const acc = data.grade_accuracy_pct ? ` • ${data.grade_accuracy_pct}% grade accuracy` : '';
+                const n = data.n_samples || 0;
+                dot.style.background = n >= 20 ? '#28a745' : '#ffc107';
+                txt.textContent = `AI Model: Active (${n} samples${acc})`;
+              }
+            })
+            .catch(() => {});
+        }
+
+        // ---- Card ID display ----
+        function displayCardId(cardId) {
+          if (!cardId || cardId.confidence === 'low') return;
+          const panel = document.getElementById('card-id-panel');
+          const content = document.getElementById('card-id-content');
+          const queryInput = document.getElementById('comps-query-input');
+          if (!panel || !content) return;
+
+          const fields = [
+            { label: 'Player', value: cardId.player_name },
+            { label: 'Year', value: cardId.year },
+            { label: 'Brand', value: cardId.manufacturer },
+            { label: 'Set', value: cardId.set_name },
+            { label: 'Card #', value: cardId.card_number },
+            { label: 'Confidence', value: cardId.confidence },
+          ];
+
+          content.innerHTML = fields.filter(f => f.value).map(f => `
+            <div style="background: #f8f8ff; border-radius: 8px; padding: 10px 12px;">
+              <div style="font-size: 0.75em; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">${f.label}</div>
+              <div style="font-weight: 600; color: #333; margin-top: 3px;">${f.value}</div>
+            </div>
+          `).join('');
+
+          if (queryInput && cardId.search_query) {
+            queryInput.value = cardId.search_query;
+          }
+
+          panel.style.display = 'block';
+        }
+
+        // ---- Comps ----
+        function fetchComps() {
+          const query = document.getElementById('comps-query-input')?.value?.trim();
+          if (!query) return;
+
+          // Ensure Grade tab is visible so comps panel shows
+          switchTab('tab-grade');
+
+          const grade = window._lastGrade || null;
+          const panel = document.getElementById('comps-panel');
+          const loading = document.getElementById('comps-loading');
+          const content = document.getElementById('comps-content');
+          const notConf = document.getElementById('comps-not-configured');
+          const errDiv  = document.getElementById('comps-error');
+          if (!panel) return;
+
+          panel.style.display = 'block';
+          if (loading) loading.style.display = 'block';
+          if (content) content.style.display = 'none';
+          if (notConf) notConf.style.display = 'none';
+          if (errDiv)  errDiv.style.display = 'none';
+
+          const fd = new FormData();
+          fd.append('search_query', query);
+          if (grade) fd.append('grade', grade);
+
+          fetch('/comps', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(data => {
+              if (loading) loading.style.display = 'none';
+              if (!data.ebay_configured && !data.scp_configured && !data.ch_configured) {
+                if (notConf) notConf.style.display = 'block';
+                return;
+              }
+              const rawComps = data.raw_comps || {};
+              if (rawComps.error && rawComps.error.includes('EBAY_APP_ID')) {
+                if (notConf) notConf.style.display = 'block';
+                return;
+              }
+              if (rawComps.error) {
+                if (errDiv) { errDiv.style.display = 'block'; errDiv.textContent = rawComps.error; }
+                return;
+              }
+              renderComps(data.graded_comps, data.raw_comps);
+              if (content) content.style.display = 'block';
+            })
+            .catch(err => {
+              if (loading) loading.style.display = 'none';
+              if (errDiv) { errDiv.style.display = 'block'; errDiv.textContent = 'Failed to fetch comps: ' + err; }
+            });
+        }
+
+        function renderComps(gradedData, rawData) {
+          const statsDiv = document.getElementById('comps-stats');
+          const tbody    = document.getElementById('comps-tbody');
+          if (!statsDiv || !tbody) return;
+
+          // Use graded comps if available and has items, else raw
+          const primary = (gradedData?.items?.length > 0) ? gradedData : rawData;
+          const stats   = primary?.stats;
+
+          if (stats) {
+            statsDiv.innerHTML = [
+              { label: 'Median', value: `$${stats.median}` },
+              { label: 'Average', value: `$${stats.mean}` },
+              { label: 'Low', value: `$${stats.low}` },
+              { label: 'High', value: `$${stats.high}` },
+            ].map(s => `
+              <div style="background: #f8f8ff; border-radius: 10px; padding: 14px; text-align: center;">
+                <div style="font-size: 0.75em; color: #888; text-transform: uppercase;">${s.label}</div>
+                <div style="font-size: 1.4em; font-weight: 700; color: #667eea; margin-top: 4px;">${s.value}</div>
+                <div style="font-size: 0.7em; color: #aaa;">${stats.count} sales</div>
+              </div>
+            `).join('');
+          }
+
+          const items = primary?.items || [];
+          tbody.innerHTML = items.map(item => `
+            <tr style="border-bottom: 1px solid #f0f0f0;">
+              <td style="padding: 9px 10px; color: #333;">${item.title.substring(0, 70)}${item.title.length > 70 ? '…' : ''}</td>
+              <td style="padding: 9px 10px; text-align: right; font-weight: 700; color: #28a745;">$${item.price.toFixed(2)}</td>
+              <td style="padding: 9px 10px; text-align: center; color: #888; font-size: 0.85em;">${item.sold_date || ''}</td>
+              <td style="padding: 9px 10px; text-align: center;">
+                <a href="${item.url}" target="_blank" style="color: #667eea; font-size: 0.85em;">View →</a>
+              </td>
+            </tr>
+          `).join('');
+        }
+
+        // ---- Slab Mode ----
+        function onSlabModeChange(enabled) {
+          const track = document.getElementById('slabToggleTrack');
+          const thumb = document.getElementById('slabToggleThumb');
+          const instructions = document.getElementById('slabInstructions');
+          const gradeBtn = document.getElementById('gradeButton');
+
+          if (track) track.style.background = enabled ? '#667eea' : '#ccc';
+          if (thumb) thumb.style.left = enabled ? '22px' : '2px';
+          if (instructions) instructions.style.display = enabled ? 'block' : 'none';
+
+          // Update button text
+          if (gradeBtn) gradeBtn.textContent = enabled ? 'Analyze Slab' : 'Grade My Card';
+        }
+
+        function isSlabMode() {
+          return document.getElementById('slabModeToggle')?.checked || false;
+        }
+
+        function shouldAutoSaveSlab() {
+          return document.getElementById('autoSaveSlabToggle')?.checked || false;
+        }
+
+        // ---- ML blend info in grade display ----
+        function showMlGradeInfo(mlInfo) {
+          const el = document.getElementById('ml-grade-info');
+          if (!el || !mlInfo) return;
+          if (mlInfo.active) {
+            const pct = Math.round((mlInfo.ml_weight || 0) * 100);
+            el.textContent = `ML model active (${mlInfo.n_samples} samples, ${pct}% influence)`;
+            el.style.display = 'block';
+          } else {
+            el.style.display = 'none';
+          }
+        }
+
+        // Call on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadMlStatus();
+            loadVisionModelStatus();
+            loadFirecrawlStatus();
+            dfRenderHistory();
+        });
+
+        // ---- Deal Finder search history (localStorage) ----
+        const DF_HISTORY_KEY = 'df_search_history';
+        function dfSaveHistory(query, grade, listingType) {
+          const h = dfLoadHistory();
+          const entry = { query, grade, listingType, ts: Date.now() };
+          const filtered = h.filter(e => e.query !== query || e.grade !== grade || e.listingType !== listingType);
+          filtered.unshift(entry);
+          localStorage.setItem(DF_HISTORY_KEY, JSON.stringify(filtered.slice(0, 15)));
+          dfRenderHistory();
+        }
+        function dfLoadHistory() {
+          try { return JSON.parse(localStorage.getItem(DF_HISTORY_KEY) || '[]'); } catch { return []; }
+        }
+        function dfRenderHistory() {
+          const h = dfLoadHistory();
+          const bar = document.getElementById('df-history-bar');
+          const chips = document.getElementById('df-history-chips');
+          if (!h.length) { bar.style.display = 'none'; return; }
+          bar.style.display = 'block';
+          chips.innerHTML = h.map((e, i) => {
+            const label = e.query + (e.grade ? ` PSA${e.grade}` : '') + (e.listingType === 'AUCTION' ? ' 🔨' : e.listingType === 'FIXED_PRICE' ? ' 🛒' : '');
+            return `<span onclick="dfRestoreHistory(${i})" style="cursor:pointer; display:inline-block; margin-right:6px; margin-bottom:4px; padding:3px 10px; border-radius:12px; background:rgba(255,255,255,0.07); color:#bbb; font-size:0.78em; border:1px solid #333;" title="${e.query}">${label}</span>`;
+          }).join('');
+        }
+        function dfRestoreHistory(i) {
+          const h = dfLoadHistory();
+          const e = h[i];
+          if (!e) return;
+          document.getElementById('df-query').value = e.query;
+          document.getElementById('df-grade').value = e.grade || '';
+          document.getElementById('df-listing-type').value = e.listingType || '';
+          runDealFinder();
+        }
+
+        // ---- Deal Finder ----
+        async function runDealFinder() {
+          const query = document.getElementById('df-query').value.trim();
+          if (!query) {
+            alert('Please enter a card search query.');
+            return;
+          }
+
+          const grade        = document.getElementById('df-grade').value;
+          const gradingCost  = document.getElementById('df-grading-cost').value;
+          const listingType  = document.getElementById('df-listing-type').value;
+          const excludeRaw   = document.getElementById('df-exclude').value;
+          const excludeTerms = excludeRaw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+
+          // UI reset
+          ['df-loading','df-summary','df-results','df-empty','df-error','df-comps-warning'].forEach(id => {
+            document.getElementById(id).style.display = 'none';
+          });
+          document.getElementById('df-loading').style.display = 'block';
+
+          const body = { search_query: query, grading_cost: parseFloat(gradingCost) || 25 };
+          if (grade) body.psa_grade = parseFloat(grade);
+          if (listingType) body.listing_type = listingType;
+
+          let data;
+          try {
+            const resp = await fetch('/deal-finder', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            });
+            data = await resp.json();
+          } catch (err) {
+            document.getElementById('df-loading').style.display = 'none';
+            const el = document.getElementById('df-error');
+            el.textContent = 'Network error: ' + err;
+            el.style.display = 'block';
+            return;
+          }
+
+          document.getElementById('df-loading').style.display = 'none';
+
+          if (!data.success) {
+            const el = document.getElementById('df-error');
+            el.textContent = data.error || 'Unknown error';
+            el.style.display = 'block';
+            return;
+          }
+
+          // Client-side exclude filter
+          if (excludeTerms.length && data.deals) {
+            const before = data.deals.length;
+            data.deals = data.deals.filter(d => {
+              const t = d.title.toLowerCase();
+              return !excludeTerms.some(ex => t.includes(ex));
+            });
+            if (data.deals.length < before) {
+              const removed = before - data.deals.length;
+              const warn = document.getElementById('df-comps-warning');
+              warn.textContent = `ℹ️ ${removed} listing${removed > 1 ? 's' : ''} hidden by exclude filter (${excludeRaw}).`;
+              warn.style.display = 'block';
+            }
+          }
+
+          if (!data.deals || data.deals.length === 0) {
+            const emptyEl = document.getElementById('df-empty');
+            emptyEl.innerHTML = `No active eBay listings found for <strong>"${data.query}"</strong>.<br>
+              <small style="color:#777; margin-top:6px; display:block;">Check spelling and try a simpler search — e.g. <em>cooper flagg topps chrome</em> instead of <em>topps chrome copper flagg #251</em>.</small>`;
+            emptyEl.style.display = 'block';
+            return;
+          }
+
+          // Save to history after confirmed results
+          dfSaveHistory(query, grade, listingType);
+
+          // Show note if we fell back to a broader query (e.g. card number stripped)
+          if (data.search_query_used && data.search_query_used !== data.query) {
+            const warn = document.getElementById('df-comps-warning');
+            warn.textContent = `ℹ️ No results for "${data.query}" — showing results for "${data.search_query_used}" instead.`;
+            warn.style.display = 'block';
+          }
+
+          // Populate summary stats
+          const sc = data.sold_comps || {};
+          const fmt = v => v != null ? '$' + v.toFixed(2) : '—';
+          document.getElementById('df-stat-raw-median').textContent = sc.raw ? fmt(sc.raw.median) : '—';
+          document.getElementById('df-stat-psa9').textContent  = sc.psa9  ? fmt(sc.psa9.median)  : '—';
+          document.getElementById('df-stat-psa10').textContent = sc.psa10 ? fmt(sc.psa10.median) : '—';
+          const buyCount = data.deals.filter(d => d.verdict === 'BUY').length;
+          document.getElementById('df-stat-buy-count').textContent = buyCount;
+
+          // Populate price trend widget
+          const trend = data.price_trend;
+          const trendWrap = document.getElementById('df-stat-trend-wrap');
+          if (trend && trend.direction && trend.direction !== 'insufficient') {
+            const arrowMap = { up: '↑', down: '↓', flat: '→' };
+            const colorMap = { up: '#ef9a9a', down: '#a5d6a7', flat: '#ffe082' };
+            // up = rising prices = harder to find deals (warn); down = falling = easier (good for buyers)
+            const arrow = arrowMap[trend.direction] || '→';
+            const color = colorMap[trend.direction] || '#ccc';
+            const pctStr = trend.pct_change != null ? (trend.pct_change > 0 ? '+' : '') + trend.pct_change + '%' : '';
+            document.getElementById('df-stat-trend').innerHTML =
+              `<span style="color:${color}">${arrow} ${pctStr}</span>`;
+            const recentStr = trend.recent_median != null ? '$' + trend.recent_median.toFixed(2) : '?';
+            const olderStr  = trend.older_median  != null ? '$' + trend.older_median.toFixed(2)  : '?';
+            document.getElementById('df-stat-trend-sub').textContent =
+              `${recentStr} vs ${olderStr} (45-120d)`;
+            trendWrap.style.display = 'block';
+          } else {
+            trendWrap.style.display = 'none';
+          }
+
+          document.getElementById('df-summary').style.display = 'block';
+
+          // Show comps warning if Finding API failed (rate limit etc)
+          const compWarn = document.getElementById('df-comps-warning');
+          if (data.sold_comps_error) {
+            const isRateLimit = data.sold_comps_error.includes('10001') || data.sold_comps_error.includes('RateLimiter');
+            if (isRateLimit) {
+              // Calculate time until midnight Pacific
+              const now = new Date();
+              const ptOffset = now.toLocaleString('en-US', {timeZone: 'America/Los_Angeles', hour12: false}).includes('24') ? -8 : -7;
+              const ptMidnight = new Date(now);
+              ptMidnight.setUTCHours(8 - ptOffset, 0, 0, 0); // midnight PT = 7 or 8 UTC
+              if (ptMidnight <= now) ptMidnight.setUTCDate(ptMidnight.getUTCDate() + 1);
+              const hoursLeft = Math.ceil((ptMidnight - now) / 3600000);
+              compWarn.textContent = `⚠️ eBay sold comps API limit reached (5K calls/day). Resets in ~${hoursLeft}h (midnight Pacific). Active listings still shown above — profit/ROI columns will be blank until reset. Each card graded uses 1–2 API calls; 24-hour caching is now enabled to reduce usage.`;
+            } else {
+              compWarn.textContent = '⚠️ Could not load sold comps: ' + data.sold_comps_error;
+            }
+            compWarn.style.display = 'block';
+          } else {
+            compWarn.style.display = 'none';
+          }
+
+          // Build table rows
+          const tbody = document.getElementById('df-tbody');
+          tbody.innerHTML = '';
+          data.deals.forEach(deal => {
+            const verdictColor = { BUY: '#4caf50', WATCH: '#ff9800', PASS: '#9e9e9e', UNKNOWN: '#607d8b' }[deal.verdict] || '#ccc';
+            const verdictBg    = { BUY: 'rgba(76,175,80,0.15)', WATCH: 'rgba(255,152,0,0.1)', PASS: 'rgba(0,0,0,0.0)', UNKNOWN: 'rgba(0,0,0,0.0)' }[deal.verdict] || '';
+
+            const rawProfit  = deal.raw_profit  != null ? (deal.raw_profit  >= 0 ? '+' : '') + '$' + deal.raw_profit.toFixed(2)  : '—';
+            const bestProfit = deal.best_grade_profit != null ? (deal.best_grade_profit >= 0 ? '+' : '') + '$' + deal.best_grade_profit.toFixed(2) : '—';
+            const rawRoi     = deal.raw_roi_pct != null ? deal.raw_roi_pct.toFixed(1) + '%' : '—';
+            const bestLabel  = deal.best_grade ? `PSA ${deal.best_grade}` : '';
+
+            const rawProfitColor  = deal.raw_profit  != null && deal.raw_profit  > 0 ? '#81c784' : '#ef9a9a';
+            const bestProfitColor = deal.best_grade_profit != null && deal.best_grade_profit > 0 ? '#81c784' : '#ef9a9a';
+
+            const tr = document.createElement('tr');
+            tr.style.background = verdictBg;
+            tr.style.borderBottom = '1px solid #2a2a4a';
+            tr.innerHTML = `
+              <td style="padding: 10px 8px; text-align:center;">
+                <span style="background:${verdictColor}22; color:${verdictColor}; border: 1px solid ${verdictColor}55; padding: 3px 9px; border-radius: 12px; font-weight: 700; font-size: 0.8em;">${deal.verdict}</span>
+              </td>
+              <td style="padding: 10px 8px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85em;" title="${deal.title}">
+                ${deal.title}
+                <div style="color:#666; font-size:0.8em; margin-top:2px;">${deal.condition} · ${deal.listing_type}</div>
+              </td>
+              <td style="padding: 10px 8px; text-align:right; font-weight:600; color:#fff;">
+                $${deal.listing_price.toFixed(2)}
+                ${deal.shipping > 0 ? `<div style="color:#888;font-size:0.78em;">+$${deal.shipping.toFixed(2)} ship</div>` : '<div style="color:#666;font-size:0.78em;">free ship</div>'}
+              </td>
+              <td style="padding: 10px 8px; text-align:right; font-weight:700; color:${rawProfitColor};">${rawProfit}</td>
+              <td style="padding: 10px 8px; text-align:right; font-weight:700; color:${bestProfitColor};">
+                ${bestProfit}
+                ${bestLabel ? `<div style="color:#888;font-size:0.78em;">${bestLabel} · sell $${deal.best_grade_sell ? deal.best_grade_sell.toFixed(0) : '—'}</div>` : ''}
+              </td>
+              <td style="padding: 10px 8px; text-align:center; color:${deal.raw_roi_pct > 0 ? '#81c784' : '#ef9a9a'}; font-weight:600;">${rawRoi}</td>
+              <td style="padding: 10px 8px; text-align:center;">
+                <a href="${deal.url}" target="_blank" style="color:#90caf9; font-size:0.85em; text-decoration:none;">View →</a>
+              </td>
+            `;
+            tbody.appendChild(tr);
+          });
+
+          document.getElementById('df-results').style.display = 'block';
+        }
+
+        // Allow pressing Enter in the deal finder query box
+        document.addEventListener('DOMContentLoaded', () => {
+          document.getElementById('df-query').addEventListener('keydown', e => {
+            if (e.key === 'Enter') runDealFinder();
+          });
+          document.getElementById('ro-query').addEventListener('keydown', e => {
+            if (e.key === 'Enter') runRawOpps();
+          });
+        });
+
+        // ===== TAB SWITCHING =====
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            const panel = document.getElementById(tabId);
+            if (panel) panel.classList.add('active');
+            const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+            if (btn) btn.classList.add('active');
+            try { sessionStorage.setItem('activeTab', tabId); } catch(e) {}
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    // External-link tabs navigate to a separate page
+                    if (btn.dataset.href) {
+                        window.location.href = btn.dataset.href;
+                        return;
+                    }
+                    switchTab(btn.dataset.tab);
+                });
+            });
+            const saved = sessionStorage.getItem('activeTab');
+            if (saved && document.getElementById(saved)) {
+                switchTab(saved);
+            }
+        });
+
+        // ===== RAW GRADING OPPORTUNITIES =====
+        async function runRawOpps() {
+            const query       = document.getElementById('ro-query').value.trim();
+            const maxPrice    = parseFloat(document.getElementById('ro-max-price').value) || 100;
+            const gradingCost = parseFloat(document.getElementById('ro-grading-cost').value) || 25;
+
+            if (!query) {
+                document.getElementById('ro-error').textContent = 'Please enter a card search query.';
+                document.getElementById('ro-error').style.display = 'block';
+                return;
+            }
+
+            ['ro-loading','ro-summary','ro-results','ro-empty','ro-error'].forEach(id => {
+                document.getElementById(id).style.display = 'none';
+            });
+            document.getElementById('ro-loading').style.display = 'block';
+
+            try {
+                const body = { search_query: query, grading_cost: gradingCost };
+                const resp = await fetch('/deal-finder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await resp.json();
+                document.getElementById('ro-loading').style.display = 'none';
+
+                if (data.error) {
+                    document.getElementById('ro-error').textContent = data.error;
+                    document.getElementById('ro-error').style.display = 'block';
+                    return;
+                }
+
+                // Filter out already-graded listings (PSA / BGS / SGC / CGC in title)
+                const gradedPattern = /\b(PSA|BGS|SGC|CGC|BVG)\b/i;
+                const rawDeals = (data.deals || []).filter(d =>
+                    !gradedPattern.test(d.title) && d.listing_price <= maxPrice
+                );
+
+                const sc = data.sold_comps || {};
+                if (sc.raw && sc.raw.median) {
+                    document.getElementById('ro-stat-raw-median').textContent = `$${sc.raw.median}`;
+                }
+                if (sc.psa9 && sc.psa9.median) {
+                    document.getElementById('ro-stat-psa9').textContent = `$${sc.psa9.median}`;
+                }
+                if (sc.psa10 && sc.psa10.median) {
+                    document.getElementById('ro-stat-psa10').textContent = `$${sc.psa10.median}`;
+                }
+
+                const gradeItCount = rawDeals.filter(d => d.verdict === 'BUY').length;
+                document.getElementById('ro-stat-grade-it-count').textContent = gradeItCount;
+                document.getElementById('ro-summary').style.display = 'block';
+
+                if (rawDeals.length === 0) {
+                    document.getElementById('ro-empty').style.display = 'block';
+                    return;
+                }
+
+                const tbody = document.getElementById('ro-tbody');
+                tbody.innerHTML = '';
+                rawDeals.forEach(deal => {
+                    const roi = deal.raw_roi_pct != null ? deal.raw_roi_pct : 0;
+                    const confidence = roi > 100 ? 'High' : roi > 50 ? 'Medium' : 'Low';
+                    const confColor  = roi > 100 ? '#81c784' : roi > 50 ? '#ffcc80' : '#ef9a9a';
+
+                    // Remap verdict labels for grading context
+                    const verdictMap   = { BUY: 'Grade It', WATCH: 'Consider', PASS: 'Skip', UNKNOWN: 'Unknown' };
+                    const verdictColor = { BUY: '#4caf50', WATCH: '#ff9800', PASS: '#9e9e9e', UNKNOWN: '#607d8b' };
+                    const verdict      = verdictMap[deal.verdict] || deal.verdict;
+                    const vColor       = verdictColor[deal.verdict] || '#ccc';
+
+                    const gb = deal.grade_breakdown || {};
+                    const psa9val  = gb.psa9  ? gb.psa9.profit  : null;
+                    const psa10val = gb.psa10 ? gb.psa10.profit : null;
+                    const psa9Profit  = psa9val  != null ? (psa9val  >= 0 ? '+' : '') + '$' + psa9val.toFixed(2)  : '—';
+                    const psa10Profit = psa10val != null ? (psa10val >= 0 ? '+' : '') + '$' + psa10val.toFixed(2) : '—';
+                    const psa9Color  = psa9val  != null && psa9val  > 0 ? '#81c784' : '#ef9a9a';
+                    const psa10Color = psa10val != null && psa10val > 0 ? '#81c784' : '#ef9a9a';
+
+                    const tr = document.createElement('tr');
+                    tr.style.borderBottom = '1px solid #2a2a4a';
+                    tr.innerHTML = `
+                      <td style="padding: 10px 8px; text-align:center;">
+                        <span style="background:${vColor}22; color:${vColor}; border: 1px solid ${vColor}55; padding: 3px 9px; border-radius: 12px; font-weight: 700; font-size: 0.8em;">${verdict}</span>
+                      </td>
+                      <td style="padding: 10px 8px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85em;" title="${deal.title}">
+                        ${deal.title}
+                        <div style="color:#666; font-size:0.8em; margin-top:2px;">${deal.condition} · ${deal.listing_type}</div>
+                      </td>
+                      <td style="padding: 10px 8px; text-align:right; font-weight:600; color:#fff;">
+                        $${deal.listing_price.toFixed(2)}
+                        ${deal.shipping > 0 ? '<div style="color:#888;font-size:0.78em;">+$' + deal.shipping.toFixed(2) + ' ship</div>' : '<div style="color:#666;font-size:0.78em;">free ship</div>'}
+                      </td>
+                      <td style="padding: 10px 8px; text-align:right; font-weight:700; color:${psa9Color};">${psa9Profit}</td>
+                      <td style="padding: 10px 8px; text-align:right; font-weight:700; color:${psa10Color};">${psa10Profit}</td>
+                      <td style="padding: 10px 8px; text-align:center; color:${confColor}; font-weight:600;">${confidence}</td>
+                      <td style="padding: 10px 8px; text-align:center;">
+                        <a href="${deal.url}" target="_blank" style="color:#90caf9; font-size:0.85em; text-decoration:none;">View →</a>
+                      </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+                document.getElementById('ro-results').style.display = 'block';
+
+            } catch(err) {
+                document.getElementById('ro-loading').style.display = 'none';
+                document.getElementById('ro-error').textContent = 'Failed to scan listings: ' + err;
+                document.getElementById('ro-error').style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>
